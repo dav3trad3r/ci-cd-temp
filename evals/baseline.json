@@ -1,0 +1,4 @@
+{
+  "minAccuracy": 0.9,
+  "note": "Raise this when a change improves accuracy, so later changes cannot quietly lose the gain."
+}

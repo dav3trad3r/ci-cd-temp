@@ -1,0 +1,67 @@
+# CI: every pull request and every push to main runs the full check set.
+# Make "Checks" a required status check in Settings → Rules, so nothing merges red.
+#
+# Actions are pinned to full commit SHAs, not tags: a tag can be moved to malicious
+# code (as happened to tj-actions/changed-files in 2025). Dependabot keeps the pins
+# current and the version comments readable.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Format
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests (unit, access control, row-level security, regressions, API contracts)
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Front-end checks (secrets, secret-like VITE_ names, bundle-size budget)
+        run: npm run check:frontend
+      - name: Smoke test (start the built server and call it)
+        run: npm run smoke
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Fails a pull request that adds a dependency with a known high or critical vulnerability.
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure

@@ -1,0 +1,5 @@
+# Who reviews what. Pull requests that touch these paths ask these people for review.
+# Replace with your organisation's team, for example @your-org/platform.
+*                    @dav3trad3r
+/.github/            @dav3trad3r
+/db/migrations/      @dav3trad3r

@@ -1,0 +1,19 @@
+[
+  { "input": "Is the two-bedroom on James Street still available?", "expected": "availability" },
+  { "input": "Has the Newstead unit been taken yet?", "expected": "availability" },
+  { "input": "Is 14 Ann Street vacant from December?", "expected": "availability" },
+  { "input": "Can I book an inspection for Saturday morning?", "expected": "inspection" },
+  { "input": "When is the next open home?", "expected": "inspection" },
+  {
+    "input": "Could someone come and see the property with me after work?",
+    "expected": "inspection"
+  },
+  { "input": "The kitchen tap is leaking in unit 4", "expected": "maintenance" },
+  { "input": "Our air conditioner is not working", "expected": "maintenance" },
+  { "input": "There is mould in the bathroom ceiling", "expected": "maintenance" },
+  { "input": "How much is the bond?", "expected": "leasing" },
+  { "input": "Are pets allowed under the lease?", "expected": "leasing" },
+  { "input": "I submitted my application yesterday, any news?", "expected": "leasing" },
+  { "input": "Do you have a parking spot for my car?", "expected": "other" },
+  { "input": "Thanks for your help last week", "expected": "other" }
+]

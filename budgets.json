@@ -1,0 +1,4 @@
+{
+  "webJsKbGzip": 25,
+  "note": "Browser JavaScript budget in KB after gzip. Raise it on purpose in a pull request, never to make CI pass."
+}

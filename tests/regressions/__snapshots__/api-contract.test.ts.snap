@@ -1,0 +1,60 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`error responses keep their shape 1`] = `
+{
+  "body": {
+    "error": "sign_in_required",
+    "message": "Sign in to continue.",
+  },
+  "status": 401,
+}
+`;
+
+exports[`error responses keep their shape 2`] = `
+{
+  "body": {
+    "error": "invalid_item",
+    "fields": [
+      "title",
+    ],
+    "message": "Give the item a title of 1 to 200 characters, and a valid due date if you set one.",
+  },
+  "status": 400,
+}
+`;
+
+exports[`error responses keep their shape 3`] = `
+{
+  "body": {
+    "error": "not_found",
+    "message": "No item with that id.",
+  },
+  "status": 404,
+}
+`;
+
+exports[`item responses keep their shape 1`] = `
+{
+  "createdAt": Any<String>,
+  "dueAt": "2026-11-23T00:00:00.000Z",
+  "dueLocal": {
+    "date": "2026-11-23",
+    "time": "10:00",
+  },
+  "id": Any<String>,
+  "title": "Chase signed lease",
+}
+`;
+
+exports[`item responses keep their shape 2`] = `
+{
+  "createdAt": Any<String>,
+  "dueAt": "2026-11-23T00:00:00.000Z",
+  "dueLocal": {
+    "date": "2026-11-23",
+    "time": "10:00",
+  },
+  "id": Any<String>,
+  "title": "Chase signed lease",
+}
+`;
