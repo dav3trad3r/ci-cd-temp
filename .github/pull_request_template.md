@@ -11,6 +11,7 @@
 - [ ] No secrets in code or in `VITE_` variables; new settings are added to `.env.example`
 - [ ] If an API response changed shape on purpose, the snapshot is updated and the change explained here
 - [ ] If a prompt or model changed, `npm run eval` still meets the baseline
+- [ ] No check weakened to make CI pass. If one changed on purpose, the reason is here and a person has added the `guardrail-change` label
 
 ## Data and risk
 

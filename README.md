@@ -19,6 +19,7 @@ AI assistants build working apps quickly, but they rarely add pipelines, access 
 |              | API contract snapshots: response shapes cannot change by accident             | Every pull request         |
 |              | Bundle-size budget for browser JavaScript (`budgets.json`)                    | Every pull request         |
 |              | AI evaluation: known-answer cases must meet the baseline (`evals/`)           | Nightly                    |
+| AI agents    | Guardrails: no check weakened (skipped tests, raised budgets, edited CI)      | Every pull request         |
 | Running app  | Smoke test: the built server starts, answers, and refuses anonymous API calls | Every pull request         |
 | Supply chain | Production dependency audit                                                   | Nightly                    |
 
@@ -37,6 +38,34 @@ Every pull request finishes in a few minutes. Slow or costly checks run nightly 
 - **Bundle-size budget:** browser JavaScript must stay under `budgets.json`. Raise the budget on purpose in a pull request, never just to make CI pass.
 - **AI evaluation baseline:** `npm run eval` runs the cases in `evals/cases.json` and fails below `evals/baseline.json`. The template's classifier is a keyword stand-in so it runs with no API key; replace it with your model call and the evaluation tells you whether a prompt or model change made results better or worse.
 
+## Working with AI agents
+
+AI coding agents work fast and sound sure of themselves, and when a check fails, the quickest way to a green build is to weaken the check: skip the failing test, raise the budget, silence the linter or edit the workflow. The template guards against that in three layers.
+
+| Layer             | File                                                              | What it does                                                                                                                                                                                  |
+| ----------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rules             | `AGENTS.md` (Claude Code reads it through `CLAUDE.md`)            | Tells every agent how changes reach `main`, which tests each change needs, how to treat secrets, and when to stop and ask a person.                                                           |
+| Agent permissions | `.claude/settings.json`                                           | Claude Code can't read `.env` files, force-push, push to `main` or delete cloud resources, and asks before other pushes, package installs and edits to the check configuration.               |
+| Guardrails check  | `scripts/check-guardrails.ts`, `.github/workflows/guardrails.yml` | Fails a pull request that weakens a check. A person approves an intended change by adding the `guardrail-change` label, which leaves a visible record of who approved it on the pull request. |
+
+The Guardrails check fails a pull request that:
+
+- adds `.skip`, `.only` or `.todo` to a test, or deletes a test in `tests/security/` or `tests/regressions/`
+- adds `eslint-disable`, `@ts-ignore` or `@ts-nocheck`
+- raises a number in `budgets.json` or lowers `evals/baseline.json`
+- changes a check script in `package.json` (such as `test` or `lint`)
+- edits the workflows, `CODEOWNERS`, agent settings, `AGENTS.md` or the test, lint and type-check configuration (Dependabot's action bumps are let through)
+
+`npm run check:guardrails` shows locally what a reviewer will be asked to approve.
+
+**Know the limits.** Each layer can be worked around on its own, which is why there are three, with branch protection behind them:
+
+- `AGENTS.md` is guidance. Agents follow it most of the time, not always.
+- Agent permission rules stop the usual form of a command, not every way of writing it.
+- The Guardrails check runs from the pull request's own copy of the workflow, so a pull request could edit it away. That edit is itself flagged and visible in review; for full strength, require code-owner review of `.github/` (see below), which needs a second person.
+
+**Outside the repo**, give each agent its own identity with the least access it needs: read-only by default, never a person's login, and short-lived credentials (such as GitHub's OIDC sign-in to the cloud) instead of stored keys. Your cloud's activity log then shows which agent changed what.
+
 ## Use it
 
 ```bash
@@ -53,7 +82,9 @@ Some protections are repository settings rather than files:
 
 1. **Settings → General:** tick **Template repository**, so people can start new tools from it.
 2. **Settings → Advanced Security:** turn on secret scanning and **push protection**, which blocks a commit that contains a key.
-3. **Settings → Rules → Rulesets:** for `main`, require a pull request and require the **Checks** status check to pass before merging.
+3. **Settings → Rules → Rulesets:** for `main`, require a pull request and require the **Checks** and **Guardrails** status checks to pass before merging.
+4. **Issues → Labels:** create the `guardrail-change` label, used to approve an intended change to the checks.
+5. **For teams:** in the same ruleset, tick **Require review from Code Owners**, so changes to `.github/` and the migrations need the owners in `.github/CODEOWNERS` to approve them.
 
 ## Before production
 

@@ -1,0 +1,38 @@
+# Guardrails: fails a pull request that weakens the checks instead of fixing the code,
+# which is the usual way an AI agent turns a red build green (skip the failing test,
+# raise the budget, silence the linter, edit the workflow).
+#
+# A person approves an intended change by adding the "guardrail-change" label; adding
+# or removing a label re-runs this check. Make "Guardrails" a required status check in
+# Settings → Rules, next to "Checks".
+
+name: Guardrails
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guardrails-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guardrails:
+    name: Guardrails
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # needs the base branch to compare with
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: No checks weakened
+        run: npm run check:guardrails
