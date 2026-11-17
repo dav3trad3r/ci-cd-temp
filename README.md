@@ -1,4 +1,4 @@
-# Paved road template
+# CI/CD template (ci-cd-temp)
 
 A starter repo for internal tools built with AI coding assistants (Claude Code, GitHub Copilot, Copilot Studio and the like). CI, security scanning and regression checks are switched on from the first commit, so a new tool starts safe without its builder having to set any of it up.
 
