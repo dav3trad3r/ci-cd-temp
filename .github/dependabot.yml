@@ -7,7 +7,13 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: development
+  # All action updates arrive as one pull request. Steps that must match (CodeQL's
+  # init and analyze) then always move together.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
