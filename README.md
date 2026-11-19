@@ -64,6 +64,21 @@ The Guardrails check fails a pull request that:
 - Agent permission rules stop the usual form of a command, not every way of writing it.
 - The Guardrails check runs from the pull request's own copy of the workflow, so a pull request could edit it away. That edit is itself flagged and visible in review; for full strength, require code-owner review of `.github/` (see below), which needs a second person.
 
+### Skills
+
+`.claude/skills/` gives Claude Code six skills. The first five run only when someone types them.
+
+| Type            | What it does                                                                                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/how`          | Explains how a part of the tool works, before you change it                                                                                      |
+| `/why`          | Explains why it was built that way, from the commits and pull requests                                                                           |
+| `/teach`        | Combines `how` and `why` into one plain explanation for someone new to the code                                                                  |
+| `/tdd`          | Fixes a bug by writing the failing test first, in `tests/regressions/`                                                                           |
+| `/blast-radius` | Finds what a change could break elsewhere, and proves the fact it is safe because of by running code                                             |
+| `/unslop`       | Turns an AI-looking screen into a designed one. It also starts when someone asks to polish a screen, and shows its plan before changing anything |
+
+`how`, `why`, `teach`, `tdd` and `blast-radius` come from [pstack](https://github.com/backnotprop/pstack) (MIT licence), with notes for this repo added. `unslop` is by Damir Sokolovsky ([heydamir.design/unslop](https://heydamir.design/unslop)), unchanged, under CC BY 4.0, which asks that the credit stays in every copy. Each folder keeps its licence. The lint and format checks skip `.claude/skills/` so the files stay as their authors wrote them; changes to them still need the `guardrail-change` label, like everything under `.claude/`.
+
 **Outside the repo**, give each agent its own identity with the least access it needs: read-only by default, never a person's login, and short-lived credentials (such as GitHub's OIDC sign-in to the cloud) instead of stored keys. Your cloud's activity log then shows which agent changed what.
 
 ## Use it

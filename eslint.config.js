@@ -4,7 +4,8 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  { ignores: ["dist/", "coverage/", "node_modules/"] },
+  // .claude/skills/ holds third-party agent skills, kept exactly as their authors wrote them.
+  { ignores: ["dist/", "coverage/", "node_modules/", ".claude/skills/"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
