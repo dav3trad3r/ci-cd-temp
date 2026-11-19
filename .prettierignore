@@ -3,5 +3,5 @@ coverage/
 node_modules/
 package-lock.json
 **/__snapshots__/
-# Third-party agent skills, kept exactly as their authors wrote them
+# Third-party agent skills, kept close to the originals so they are easy to update
 .claude/skills/

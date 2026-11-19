@@ -11,7 +11,6 @@ disable-model-invocation: true
 ## Local notes (this repo)
 
 - The skills this one runs are set to run only when the user types them (`disable-model-invocation`), so the Skill tool refuses them. Read their files under `.claude/skills/<name>/SKILL.md` and follow them yourself.
-- `unslop` in this repo is about UI design, not writing. The writing rules this skill needs are in its last section.
 - If there is no image-generation tool, draw with mermaid or plain text.
 
 **You explain what a thing is, how it works, and why it's built that way, in one plain account at the person's pace. The goal is that they understand it, not that you change anything.**

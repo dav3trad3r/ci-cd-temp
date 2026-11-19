@@ -15,7 +15,7 @@ CI exists to catch mistakes, including yours. When a check fails, fix the code. 
 - skip, focus or delete tests (`.skip`, `.only`, `.todo`), or delete anything in `tests/security/` or `tests/regressions/`
 - silence the linter or type checker (`eslint-disable`, `@ts-ignore`, `@ts-nocheck`)
 - raise `budgets.json`, lower `evals/baseline.json`, or change the check scripts in `package.json`
-- edit the workflows, `.claude/`, this file or the test and lint configuration, unless that is the task
+- edit the workflows, `.claude/`, this file, the scripts that run the checks, or the test, lint and format configuration, unless that is the task
 
 The **Guardrails** check fails a pull request that does any of these. If such a change is truly intended, explain why in the pull request description. A person approves it by adding the `guardrail-change` label; never add that label yourself.
 

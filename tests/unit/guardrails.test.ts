@@ -118,6 +118,30 @@ describe("guardrails", () => {
     ).toEqual(["check script changed"]);
   });
 
+  test("flags turning off the infrastructure check in package.json", () => {
+    const pkg = (cmd: string) => JSON.stringify({ scripts: { "check:infra": cmd } });
+    expect(
+      rules(
+        change({
+          before: { "package.json": pkg("node scripts/check-infra.mjs") },
+          after: { "package.json": pkg("echo skipped") },
+        }),
+      ),
+    ).toEqual(["check script changed"]);
+  });
+
+  test("flags edits to the format and Bicep settings and to the scripts that run checks", () => {
+    for (const path of [
+      ".prettierignore",
+      ".prettierrc.json",
+      "bicepconfig.json",
+      "scripts/check-infra.mjs",
+      "evals/run.ts",
+    ]) {
+      expect(rules(change({ files: [{ status: "M", path }] }))).toEqual(["guarded file changed"]);
+    }
+  });
+
   test("flags edits to workflows and agent settings, except Dependabot bumping actions", () => {
     const files = [{ status: "M", path: ".github/workflows/ci.yml" }];
     expect(rules(change({ files }))).toEqual(["guarded file changed"]);
