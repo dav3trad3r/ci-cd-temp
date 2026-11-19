@@ -6,22 +6,23 @@ AI assistants build working apps quickly, but they rarely add pipelines, access 
 
 ## What runs, and when
 
-| Layer        | Check                                                                         | When                       |
-| ------------ | ----------------------------------------------------------------------------- | -------------------------- |
-| Hygiene      | Install from the lockfile, format, lint, type check, build                    | Every pull request         |
-| Security     | Access tests: no sign-in gets 401, another user's data gets 404               | Every pull request         |
-|              | Row-level security switched on for every table                                | Every pull request         |
-|              | No secrets in the browser bundle, no secret-like `VITE_` variables            | Every pull request         |
-|              | Dependency review (blocks packages with known high-severity issues)           | Every pull request         |
-|              | CodeQL code scanning                                                          | Every pull request, weekly |
-|              | Dependabot updates for packages and pinned actions                            | Weekly                     |
-| Regression   | A test for every fixed bug (`tests/regressions/`)                             | Every pull request         |
-|              | API contract snapshots: response shapes cannot change by accident             | Every pull request         |
-|              | Bundle-size budget for browser JavaScript (`budgets.json`)                    | Every pull request         |
-|              | AI evaluation: known-answer cases must meet the baseline (`evals/`)           | Nightly                    |
-| AI agents    | Guardrails: no check weakened (skipped tests, raised budgets, edited CI)      | Every pull request         |
-| Running app  | Smoke test: the built server starts, answers, and refuses anonymous API calls | Every pull request         |
-| Supply chain | Production dependency audit                                                   | Nightly                    |
+| Layer          | Check                                                                         | When                       |
+| -------------- | ----------------------------------------------------------------------------- | -------------------------- |
+| Hygiene        | Install from the lockfile, format, lint, type check, build                    | Every pull request         |
+| Security       | Access tests: no sign-in gets 401, another user's data gets 404               | Every pull request         |
+|                | Row-level security switched on for every table                                | Every pull request         |
+|                | No secrets in the browser bundle, no secret-like `VITE_` variables            | Every pull request         |
+|                | Dependency review (blocks packages with known high-severity issues)           | Every pull request         |
+|                | CodeQL code scanning                                                          | Every pull request, weekly |
+|                | Dependabot updates for packages and pinned actions                            | Weekly                     |
+| Regression     | A test for every fixed bug (`tests/regressions/`)                             | Every pull request         |
+|                | API contract snapshots: response shapes cannot change by accident             | Every pull request         |
+|                | Bundle-size budget for browser JavaScript (`budgets.json`)                    | Every pull request         |
+|                | AI evaluation: known-answer cases must meet the baseline (`evals/`)           | Nightly                    |
+| AI agents      | Guardrails: no check weakened (skipped tests, raised budgets, edited CI)      | Every pull request         |
+| Infrastructure | Azure templates in `infra/` pass the Bicep linter and compile                 | Every pull request         |
+| Running app    | Smoke test: the built server starts, answers, and refuses anonymous API calls | Every pull request         |
+| Supply chain   | Production dependency audit                                                   | Nightly                    |
 
 Every pull request finishes in a few minutes. Slow or costly checks run nightly so they never hold up a change.
 
@@ -65,6 +66,10 @@ The Guardrails check fails a pull request that:
 - The Guardrails check runs from the pull request's own copy of the workflow, so a pull request could edit it away. That edit is itself flagged and visible in review; for full strength, require code-owner review of `.github/` (see below), which needs a second person.
 
 **Outside the repo**, give each agent its own identity with the least access it needs: read-only by default, never a person's login, and short-lived credentials (such as GitHub's OIDC sign-in to the cloud) instead of stored keys. Your cloud's activity log then shows which agent changed what.
+
+## Deploy to Azure
+
+`infra/` holds Bicep templates (Azure's infrastructure-as-code language) for running a tool on Azure Container Apps the standard way: Entra sign-in, its own identity and Key Vault, scale to zero, logs and alerts to the platform team, and owner, cost-centre and data-classification tags. See [infra/README.md](infra/README.md).
 
 ## Use it
 
