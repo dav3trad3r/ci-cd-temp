@@ -46,6 +46,8 @@ jobs:
         run: npm run build
       - name: Front-end checks (secrets, secret-like VITE_ names, bundle-size budget)
         run: npm run check:frontend
+      - name: Infrastructure templates (Bicep lint and compile)
+        run: npm run check:infra
       - name: Smoke test (start the built server and call it)
         run: npm run smoke
 
