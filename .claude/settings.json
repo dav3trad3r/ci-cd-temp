@@ -31,6 +31,10 @@
       "Edit(vitest.config.ts)",
       "Edit(eslint.config.js)",
       "Edit(tsconfig.json)",
+      "Edit(.prettierrc.json)",
+      "Edit(.prettierignore)",
+      "Edit(bicepconfig.json)",
+      "Edit(evals/run.ts)",
       "Edit(scripts/**)"
     ],
     "deny": [

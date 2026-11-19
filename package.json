@@ -1,5 +1,5 @@
 {
-  "name": "paved-road-template",
+  "name": "ci-cd-temp",
   "version": "0.1.0",
   "private": true,
   "description": "A starter repo for internal tools built with AI coding assistants, with CI, security scanning and regression checks switched on from the first commit.",

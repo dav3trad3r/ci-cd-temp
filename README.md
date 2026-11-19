@@ -55,7 +55,7 @@ The Guardrails check fails a pull request that:
 - adds `eslint-disable`, `@ts-ignore` or `@ts-nocheck`
 - raises a number in `budgets.json` or lowers `evals/baseline.json`
 - changes a check script in `package.json` (such as `test` or `lint`)
-- edits the workflows, `CODEOWNERS`, agent settings, `AGENTS.md` or the test, lint and type-check configuration (Dependabot's action bumps are let through)
+- edits the workflows, `CODEOWNERS`, agent settings, `AGENTS.md`, the scripts that run the checks, or the test, lint, format and type-check configuration (Dependabot's action bumps are let through)
 
 `npm run check:guardrails` shows locally what a reviewer will be asked to approve.
 
@@ -67,18 +67,17 @@ The Guardrails check fails a pull request that:
 
 ### Skills
 
-`.claude/skills/` gives Claude Code six skills. The first five run only when someone types them.
+`.claude/skills/` gives Claude Code five skills, which run only when someone types them.
 
-| Type            | What it does                                                                                                                                     |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/how`          | Explains how a part of the tool works, before you change it                                                                                      |
-| `/why`          | Explains why it was built that way, from the commits and pull requests                                                                           |
-| `/teach`        | Combines `how` and `why` into one plain explanation for someone new to the code                                                                  |
-| `/tdd`          | Fixes a bug by writing the failing test first, in `tests/regressions/`                                                                           |
-| `/blast-radius` | Finds what a change could break elsewhere, and proves the fact it is safe because of by running code                                             |
-| `/unslop`       | Turns an AI-looking screen into a designed one. It also starts when someone asks to polish a screen, and shows its plan before changing anything |
+| Type            | What it does                                                                         |
+| --------------- | ------------------------------------------------------------------------------------ |
+| `/how`          | Explains how a part of the tool works, before you change it                          |
+| `/why`          | Explains why it was built that way, from the commits and pull requests               |
+| `/teach`        | Combines `how` and `why` into one plain explanation for someone new to the code      |
+| `/tdd`          | Fixes a bug by writing the failing test first, in `tests/regressions/`               |
+| `/blast-radius` | Finds what a change could break elsewhere, and runs code to prove the change is safe |
 
-`how`, `why`, `teach`, `tdd` and `blast-radius` come from [pstack](https://github.com/backnotprop/pstack) (MIT licence), with notes for this repo added. `unslop` is by Damir Sokolovsky ([heydamir.design/unslop](https://heydamir.design/unslop)), unchanged, under CC BY 4.0, which asks that the credit stays in every copy. Each folder keeps its licence. The lint and format checks skip `.claude/skills/` so the files stay as their authors wrote them; changes to them still need the `guardrail-change` label, like everything under `.claude/`.
+`how`, `why`, `teach`, `tdd` and `blast-radius` come from [pstack](https://github.com/backnotprop/pstack) (MIT licence), with notes for this repo added. Each folder keeps its licence. The lint and format checks skip `.claude/skills/` so the files stay close to the originals and easy to update; changes to them still need the `guardrail-change` label, like everything under `.claude/`.
 
 **Outside the repo**, give each agent its own identity with the least access it needs: read-only by default, never a person's login, and short-lived credentials (such as GitHub's OIDC sign-in to the cloud) instead of stored keys. Your cloud's activity log then shows which agent changed what.
 
