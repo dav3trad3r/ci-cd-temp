@@ -1,6 +1,8 @@
 // Front-end checks, run after `npm run build`:
-// 1. No secrets in the files sent to the browser.
-// 2. No VITE_ variable named like a secret (anything VITE_ is readable by every visitor).
+// 1. No secrets in the files sent to the browser, including Supabase service-role keys hidden
+//    inside JWTs.
+// 2. No VITE_ or NEXT_PUBLIC_ variable named like a secret (both are readable by every visitor).
+// Tested in tests/regressions/2026-11-22-frontend-secret-check.test.ts.
 // 3. Bundle-size budget: browser JavaScript must stay under budgets.json (a performance
 //    regression check).
 import { readdir, readFile, stat } from "node:fs/promises";
@@ -30,25 +32,66 @@ try {
 // 1. Secrets in the browser bundle
 const SECRET_PATTERNS = [
   [/sk_live_[0-9A-Za-z]{8,}/, "a Stripe live secret key"],
+  [/rk_live_[0-9A-Za-z]{8,}/, "a Stripe restricted key"],
   [/service_role/, "a Supabase service-role key"],
+  [/sb_secret_[0-9A-Za-z_-]{16,}/, "a Supabase secret key"],
+  [/sk-ant-[0-9A-Za-z_-]{20,}/, "an Anthropic API key"],
+  [/sk-(?:proj|svcacct|admin)-[0-9A-Za-z_-]{20,}/, "an OpenAI API key"],
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, "a private key"],
   [/AKIA[0-9A-Z]{16}/, "an AWS access key"],
   [/gh[pousr]_[0-9A-Za-z]{30,}/, "a GitHub token"],
   [/xox[abprs]-[0-9A-Za-z-]{10,}/, "a Slack token"],
   [/APP_JWT_SECRET|DATABASE_URL/, "a server-only setting name"],
 ];
+// Not checked on purpose: Google keys starting AIza (Firebase web keys are public by design;
+// restrict them in Google Cloud instead) and Azure keys, which have no recognisable shape
+// (use managed identities so tools never hold one).
+
+// A Supabase service-role key is a JWT, so the words "service_role" are base64-encoded inside
+// it and never appear as plain text. Decode every JWT in the bundle and read its role.
+const JWT = /eyJ[0-9A-Za-z_-]{8,}\.(eyJ[0-9A-Za-z_-]{8,})\.[0-9A-Za-z_-]*/g;
+function jwtRoles(text) {
+  const roles = [];
+  for (const [, payload] of text.matchAll(JWT)) {
+    try {
+      roles.push(JSON.parse(Buffer.from(payload, "base64url").toString("utf8")).role);
+    } catch {
+      // Not a JWT after all.
+    }
+  }
+  return roles;
+}
+
 const files = await walk(WEB_DIR);
 for (const file of files) {
   const text = await readFile(file, "utf8");
   for (const [pattern, what] of SECRET_PATTERNS) {
     if (pattern.test(text)) problems.push(`${file} contains ${what}.`);
   }
+  if (jwtRoles(text).includes("service_role")) {
+    problems.push(
+      `${file} contains a Supabase service-role key (a JWT whose role is service_role).`,
+    );
+  }
 }
 
-// 2. VITE_ variables named like secrets, in the example env file and the browser source
+// 2. Public variables named like secrets: VITE_ (Vite) and NEXT_PUBLIC_ (Next.js) are both sent
+//    to the browser. Checked in the example env file and the front-end source.
 const SECRET_NAME =
-  /\bVITE_[A-Z0-9_]*(SECRET|PRIVATE|PASSWORD|TOKEN|SERVICE_ROLE|API_KEY)[A-Z0-9_]*/g;
-const sources = [".env.example", ...(await walk("src/web"))];
+  /\b(?:VITE|NEXT_PUBLIC)_[A-Z0-9_]*(SECRET|PRIVATE|PASSWORD|TOKEN|SERVICE_ROLE|API_KEY)[A-Z0-9_]*/g;
+async function walkIfPresent(dir) {
+  try {
+    return await walk(dir);
+  } catch {
+    return [];
+  }
+}
+const sources = [
+  ".env.example",
+  ...(await walkIfPresent("src")),
+  ...(await walkIfPresent("app")),
+  ...(await walkIfPresent("pages")),
+];
 for (const file of sources) {
   let text;
   try {
@@ -58,7 +101,7 @@ for (const file of sources) {
   }
   for (const match of text.matchAll(SECRET_NAME)) {
     problems.push(
-      `${file} uses ${match[0]}: VITE_ values are public, so keep secrets on the server.`,
+      `${file} uses ${match[0]}: VITE_ and NEXT_PUBLIC_ values are sent to every visitor, so keep secrets on the server.`,
     );
   }
 }
@@ -82,5 +125,5 @@ if (problems.length) {
   process.exit(1);
 }
 console.log(
-  `✓ ${files.length} browser files checked: no secrets, no secret-like VITE_ names, within budget.`,
+  `✓ ${files.length} browser files checked: no secrets, no secret-like VITE_ or NEXT_PUBLIC_ names, within budget.`,
 );

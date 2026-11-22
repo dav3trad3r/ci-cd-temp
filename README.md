@@ -6,25 +6,25 @@ AI assistants build working apps quickly, but they rarely add pipelines, access 
 
 ## What runs, and when
 
-| Layer          | Check                                                                         | When                       |
-| -------------- | ----------------------------------------------------------------------------- | -------------------------- |
-| Hygiene        | Install from the lockfile, format, lint, type check, build                    | Every pull request         |
-| Security       | Access tests: no sign-in gets 401, another user's data gets 404               | Every pull request         |
-|                | Row-level security switched on for every table                                | Every pull request         |
-|                | No secrets in the browser bundle, no secret-like `VITE_` variables            | Every pull request         |
-|                | Dependency review (blocks packages with known high-severity issues)           | Every pull request         |
-|                | CodeQL code scanning                                                          | Every pull request, weekly |
-|                | Dependabot updates for packages and pinned actions                            | Weekly                     |
-| Regression     | A test for every fixed bug (`tests/regressions/`)                             | Every pull request         |
-|                | API contract snapshots: response shapes cannot change by accident             | Every pull request         |
-|                | Bundle-size budget for browser JavaScript (`budgets.json`)                    | Every pull request         |
-|                | AI evaluation: known-answer cases must meet the baseline (`evals/`)           | Nightly                    |
-| AI agents      | Guardrails: no check weakened (skipped tests, raised budgets, edited CI)      | Every pull request         |
-|                | SRE agent: investigates an alert, proposes a fix as a draft pull request      | When an alert fires        |
-| Infrastructure | Azure templates in `infra/` pass the Bicep linter and compile                 | Every pull request         |
-| Running app    | Smoke test: the built server starts, answers, and refuses anonymous API calls | Every pull request         |
-| Supply chain   | Production dependency audit                                                   | Nightly                    |
-| Operations     | Afternoon report: drift, changes, alerts, spend and what shipped, to Teams    | Weekdays, 3 pm             |
+| Layer          | Check                                                                            | When                       |
+| -------------- | -------------------------------------------------------------------------------- | -------------------------- |
+| Hygiene        | Install from the lockfile, format, lint, type check, build                       | Every pull request         |
+| Security       | Access tests: no sign-in gets 401, another user's data gets 404                  | Every pull request         |
+|                | Row-level security switched on for every table                                   | Every pull request         |
+|                | No secrets in the browser bundle, no secret-like `VITE_` or `NEXT_PUBLIC_` names | Every pull request         |
+|                | Dependency review (blocks packages with known high-severity issues)              | Every pull request         |
+|                | CodeQL code scanning                                                             | Every pull request, weekly |
+|                | Dependabot updates for packages and pinned actions                               | Weekly                     |
+| Regression     | A test for every fixed bug (`tests/regressions/`)                                | Every pull request         |
+|                | API contract snapshots: response shapes cannot change by accident                | Every pull request         |
+|                | Bundle-size budget for browser JavaScript (`budgets.json`)                       | Every pull request         |
+|                | AI evaluation: known-answer cases must meet the baseline (`evals/`)              | Nightly                    |
+| AI agents      | Guardrails: no check weakened (skipped tests, raised budgets, edited CI)         | Every pull request         |
+|                | SRE agent: investigates an alert, proposes a fix as a draft pull request         | When an alert fires        |
+| Infrastructure | Azure templates in `infra/` pass the Bicep linter and compile                    | Every pull request         |
+| Running app    | Smoke test: the built server starts, answers, and refuses anonymous API calls    | Every pull request         |
+| Supply chain   | Production dependency audit                                                      | Nightly                    |
+| Operations     | Afternoon report: drift, changes, alerts, spend and what shipped, to Teams       | Weekdays, 3 pm             |
 
 Every pull request finishes in a few minutes. Slow or costly checks run nightly so they never hold up a change.
 
@@ -32,7 +32,7 @@ Every pull request finishes in a few minutes. Slow or costly checks run nightly 
 
 1. **Access tests** (`tests/security/access.test.ts`). AI-written APIs often ship a route that works without signing in, or that lets one user read another's records. Copy a test for every route you add.
 2. **No table without row-level security** (`tests/security/rls.test.ts`). Applies every migration to a fresh Postgres and fails if any table is missing RLS. This is the common Supabase leak, where anyone holding the public key can read a table.
-3. **No secrets in the front end** (`scripts/check-frontend.mjs`). Fails the build if the browser bundle contains a live key or a server setting, or if a `VITE_` variable is named like a secret. Anything prefixed `VITE_` or `NEXT_PUBLIC_` is readable by every visitor.
+3. **No secrets in the front end** (`scripts/check-frontend.mjs`). Fails the build if the browser bundle contains a live key (Stripe, Supabase, Anthropic, OpenAI, AWS, GitHub, Slack) or a server setting, or if a `VITE_` or `NEXT_PUBLIC_` variable is named like a secret: anything with those prefixes is readable by every visitor. It also decodes every JWT in the bundle, so a Supabase service-role key fails the build whatever it was named; the public anon key is allowed.
 
 ## Regression checks
 
