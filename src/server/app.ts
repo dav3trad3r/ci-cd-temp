@@ -51,7 +51,7 @@ export function createApp({ db, jwtSecret, timeZone }: AppOptions) {
 
   api.get("/items", async (c) => {
     const { rows } = await db.query<ItemRow>(
-      "select id, owner_id, title, due_at, created_at from items where owner_id = $1 order by created_at, id",
+      "select id, owner_id, title, due_at, created_at from items where owner_id = $1 order by due_at nulls last, created_at, id",
       [c.get("userId")],
     );
     return c.json({ items: rows.map((r) => toItem(r, timeZone)) });
@@ -75,6 +75,15 @@ export function createApp({ db, jwtSecret, timeZone }: AppOptions) {
       [c.get("userId"), parsed.data.title, parsed.data.dueAt ?? null],
     );
     return c.json({ item: toItem(rows[0]!, timeZone) }, 201);
+  });
+
+  // Items due in the next 7 days, soonest first.
+  api.get("/items/due-soon", async (c) => {
+    const { rows } = await db.query<ItemRow>(
+      "select id, owner_id, title, due_at, created_at from items where owner_id = $1 and due_at between now() and now() + interval '7 days' order by due_date",
+      [c.get("userId")],
+    );
+    return c.json({ items: rows.map((r) => toItem(r, timeZone)) });
   });
 
   api.get("/items/:id", async (c) => {
