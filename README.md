@@ -11,7 +11,7 @@ AI assistants build working apps quickly, but they rarely add pipelines, access 
 | Hygiene        | Install from the lockfile, format, lint, type check, build                        | Every pull request         |
 | Security       | Access tests: no sign-in gets 401, another user's data gets 404                   | Every pull request         |
 |                | Row-level security switched on for every table                                    | Every pull request         |
-|                | No secrets in the browser bundle, no secret-like `VITE_` variables                | Every pull request         |
+|                | No secrets in the browser bundle, no secret-like `VITE_` or `NEXT_PUBLIC_` names  | Every pull request         |
 |                | Dependency review (blocks packages with known high-severity issues)               | Every pull request         |
 |                | CodeQL code scanning                                                              | Every pull request, weekly |
 |                | Dependabot updates for packages and pinned actions                                | Weekly                     |
@@ -33,7 +33,7 @@ Every pull request finishes in a few minutes. Slow or costly checks run nightly 
 
 1. **Access tests** (`tests/security/access.test.ts`). AI-written APIs often ship a route that works without signing in, or that lets one user read another's records. Copy a test for every route you add.
 2. **No table without row-level security** (`tests/security/rls.test.ts`). Applies every migration to a fresh Postgres and fails if any table is missing RLS. This is the common Supabase leak, where anyone holding the public key can read a table.
-3. **No secrets in the front end** (`scripts/check-frontend.mjs`). Fails the build if the browser bundle contains a live key or a server setting, or if a `VITE_` variable is named like a secret. Anything prefixed `VITE_` or `NEXT_PUBLIC_` is readable by every visitor.
+3. **No secrets in the front end** (`scripts/check-frontend.mjs`). Fails the build if the browser bundle contains a live key (Stripe, Supabase, Anthropic, OpenAI, AWS, GitHub, Slack) or a server setting, or if a `VITE_` or `NEXT_PUBLIC_` variable is named like a secret: anything with those prefixes is readable by every visitor. It also decodes every JWT in the bundle, so a Supabase service-role key fails the build whatever it was named; the public anon key is allowed.
 
 ## Regression checks
 
