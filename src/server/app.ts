@@ -80,7 +80,7 @@ export function createApp({ db, jwtSecret, timeZone }: AppOptions) {
   // Items due in the next 7 days, soonest first.
   api.get("/items/due-soon", async (c) => {
     const { rows } = await db.query<ItemRow>(
-      "select id, owner_id, title, due_at, created_at from items where owner_id = $1 and due_at between now() and now() + interval '7 days' order by due_date",
+      "select id, owner_id, title, due_at, created_at from items where owner_id = $1 and due_at between now() and now() + interval '7 days' order by due_at, id",
       [c.get("userId")],
     );
     return c.json({ items: rows.map((r) => toItem(r, timeZone)) });

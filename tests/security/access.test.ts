@@ -11,6 +11,7 @@ describe("access control", () => {
       app.request("/api/items"),
       app.request("/api/items", { method: "POST", body: JSON.stringify({ title: "x" }) }),
       app.request("/api/items/00000000-0000-4000-8000-000000000000"),
+      app.request("/api/items/due-soon"),
     ];
     for (const res of await Promise.all(anonymous)) {
       expect(res.status).toBe(401);
@@ -42,6 +43,23 @@ describe("access control", () => {
 
     const asAlice = await app.request(`/api/items/${item.id}`, { headers: await authAs("alice") });
     expect(asAlice.status).toBe(200);
+  });
+
+  test("the due-soon list shows only the caller's own items", async () => {
+    const { app } = await makeTestApp();
+    const dueAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await app.request("/api/items", {
+      method: "POST",
+      headers: await authAs("alice"),
+      body: JSON.stringify({ title: "Alice's private deadline", dueAt }),
+    });
+
+    const asBob = await app.request("/api/items/due-soon", { headers: await authAs("bob") });
+    expect(asBob.status).toBe(200);
+    expect(((await asBob.json()) as { items: unknown[] }).items).toHaveLength(0);
+
+    const asAlice = await app.request("/api/items/due-soon", { headers: await authAs("alice") });
+    expect(((await asAlice.json()) as { items: unknown[] }).items).toHaveLength(1);
   });
 
   test("the health check stays public", async () => {
