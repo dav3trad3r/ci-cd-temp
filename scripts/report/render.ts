@@ -112,7 +112,7 @@ export interface Prompt {
 /** The agent explains the facts; it never decides what is true. */
 export function buildPrompt(facts: Facts): Prompt {
   const system = [
-    "You write Place's afternoon platform report for executives and tool owners who are not engineers.",
+    "You write the afternoon platform report for executives and tool owners who are not engineers.",
     "Use only the facts in the JSON you are given. Never add, guess or round up anything that isn't there.",
     "Start with one sentence saying whether anything needs a decision today.",
     "Then list each item that needs a decision, what it means in plain words, and who should act (the tool's owner).",

@@ -1,5 +1,5 @@
 # Who reviews what. Pull requests that touch these paths ask these people for review.
-# The "*" line is the reviewer for every pull request: in a Place repository, the Pipeline
+# The "*" line is the reviewer for every pull request: in an organisation's repository, the Pipeline
 # approvers team (* @your-org/pipeline-approvers), which the rulesets in .github/rulesets/ make
 # required. npm run rulesets:apply warns if it doesn't match.
 *                    @dav3trad3r
