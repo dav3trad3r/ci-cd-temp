@@ -122,7 +122,7 @@ When an alert fires on a tool, `.github/workflows/incident.yml` starts the SRE a
 2. **Azure:** the read-only identity from the afternoon report, plus **Monitoring Reader** and **Log Analytics Reader**. Repository variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` and `SRE_AGENT_ENABLED=true`.
 3. **`ops/sre-agent.json`:** one entry per tool (repository, base branch, resource group, container app, Log Analytics workspace ID, reviewer), the model, and the spend cap per incident (`budgetUsd`, enforced by Managed Agents).
 4. **The alert:** in the action group, call a Logic App that posts to `https://api.github.com/repos/<owner>/<repo>/dispatches` with `{"event_type": "azure-alert", "client_payload": {"tool": "<tool>", "alert": "<alert id>"}}`.
-5. **Setup:** `npm run sre:setup` creates the agent, its sandbox, the runbook skill and both memory stores, and records their IDs in `ops/sre-agent.lock.json`. Run it again after changing the agent's files.
+5. **Setup:** `npm run sre:setup` creates the agent, its sandbox, the runbook skill and both memory stores, and records their IDs in `ops/sre-agent.lock.json`. Commit that file so the workflow reuses them; the IDs are useless without the API key. Run setup again after changing the agent's files, and in a copy of this template, delete the file first so setup creates resources in your own account.
 
 Managed Agents runs on Anthropic's platform. On Microsoft Foundry, the same tools and runbook fit Foundry Agent Service.
 

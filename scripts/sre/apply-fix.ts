@@ -209,7 +209,15 @@ export async function applyFix(proposal: FixProposal, ctx: FixContext): Promise<
 
     // No token on this machine: push with the developer's own git credentials and leave the
     // pull request for a person to open from the saved draft.
-    git(["push", "--quiet", "origin", `HEAD:refs/heads/${branch}`], work);
+    try {
+      git(["push", "--quiet", "origin", `HEAD:refs/heads/${branch}`], work);
+    } catch (error) {
+      return {
+        ok: false,
+        checks,
+        problems: [`every check passed, but pushing ${branch} failed: ${errorLine(error)}`],
+      };
+    }
     mkdirSync(ctx.outDir, { recursive: true });
     const prDraftFile = join(ctx.outDir, "pull-request.json");
     writeFileSync(

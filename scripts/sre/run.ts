@@ -183,6 +183,7 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
     });
     const passed = result.checks.length ? `\nPassed:\n- ${result.checks.join("\n- ")}` : "";
     if (!result.ok) {
+      fixOutcome = `proposed but not opened: ${result.problems[0]?.split("\n")[0]}`;
       console.log(`[fix] refused: ${result.problems[0]?.split("\n")[0]}`);
       return `Refused:\n- ${result.problems.join("\n- ")}${passed}`;
     }
@@ -266,7 +267,7 @@ const isFinal = (event: Event) => {
 
 const kickoff = [
   `Alert on ${tool.name}: "${alertName}" fired at ${clock(firedAt)} AEST. This is incident ${incidentId}.`,
-  `The deployed code is the ${baseBranch} branch of ${tool.repo}; its snapshot is at /workspace/repo.tar.gz.`,
+  `The deployed code is the ${baseBranch} branch of ${tool.repo}; its snapshot is at /mnt/session/uploads/workspace/repo.tar.gz.`,
   diagnoseOnly
     ? "This run is diagnosis only: don't propose a fix."
     : "Investigate, keep people updated, and propose a fix if the evidence supports one.",

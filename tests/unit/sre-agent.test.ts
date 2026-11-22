@@ -133,8 +133,9 @@ describe("demo tools", () => {
       incident,
       firedAt,
     ).split("\n");
+    expect(lines[0]).toBe("(demo: a sample of log lines)");
     expect(lines.length).toBeGreaterThan(3);
-    expect(lines.every((l) => l.includes("ERROR GET /api/items/due-soon 500"))).toBe(true);
+    expect(lines.slice(1).every((l) => l.includes("ERROR GET /api/items/due-soon 500"))).toBe(true);
   });
 
   test("a log filter that isn't plain text is refused, not pasted into a query", () => {
@@ -147,8 +148,19 @@ describe("demo tools", () => {
 
   test("metrics show 5xx starting after the deploy, with steady traffic", () => {
     const rows = demoRead("get_metrics", { minutes_before: 15 }, incident, firedAt).split("\n");
-    expect(rows[0]).toBe("time (AEST) | requests | 5xx | p95 ms");
-    expect(rows.slice(1).map((r) => Number(r.split(" | ")[2]))).toEqual([8, 11, 14]);
+    expect(rows[0]).toBe("5 minutes from (AEST) | requests | 5xx | p95 ms");
+    expect(rows.slice(1).map((r) => Number(r.split(" | ")[2]))).toEqual([0, 5, 14]);
+  });
+
+  // The first demo run (22 Nov) caught this: the metrics counted errors in windows that ended
+  // before the deploy, which the logs contradicted, so the agent rightly lowered its confidence.
+  test("no 5-minute window that ends before the deploy has any errors", () => {
+    const m = incident.metrics;
+    m.requests_5xx.forEach((errors, i) => {
+      const windowEndsMinutesBefore =
+        m.startMinutesBeforeAlert - i * m.intervalMinutes - m.intervalMinutes;
+      if (windowEndsMinutesBefore >= incident.deployMinutesBeforeAlert) expect(errors).toBe(0);
+    });
   });
 
   test("get_diff only accepts a commit SHA", () => {

@@ -208,7 +208,7 @@ export function demoRead(
   if (name === "get_metrics") {
     const back = minutesBack(input);
     const m = incident.metrics;
-    const rows = ["time (AEST) | requests | 5xx | p95 ms"];
+    const rows = [`5 minutes from (AEST) | requests | 5xx | p95 ms`];
     m.requests.forEach((requests, i) => {
       const minutesBefore = m.startMinutesBeforeAlert - i * m.intervalMinutes;
       if (minutesBefore > back) return;
@@ -230,7 +230,10 @@ export function demoRead(
       .filter((l) => !filter || l.message.toLowerCase().includes(filter.toLowerCase()))
       .sort((a, b) => b.minutesBeforeAlert - a.minutesBeforeAlert)
       .map((l) => `${clock(at(l.minutesBeforeAlert))} ${l.level.toUpperCase()} ${l.message}`);
-    return lines.length ? lines.join("\n") : "No log lines match.";
+    // The demo keeps a sample of lines; its metrics count every request.
+    return lines.length
+      ? ["(demo: a sample of log lines)", ...lines].join("\n")
+      : "No log lines match.";
   }
 
   if (name === "get_recent_deploys") {
