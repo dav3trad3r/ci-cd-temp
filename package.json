@@ -22,6 +22,9 @@
     "check:guardrails": "tsx scripts/check-guardrails.ts",
     "check:infra": "node scripts/check-infra.mjs",
     "eval": "tsx evals/run.ts",
+    "sre:setup": "tsx scripts/sre/setup.ts",
+    "sre": "tsx scripts/sre/run.ts",
+    "sre:demo": "tsx scripts/sre/run.ts --demo",
     "verify": "npm run check:guardrails && npm run format:check && npm run lint && npm run typecheck && npm test && npm run build && npm run check:frontend && npm run check:infra && npm run smoke"
   },
   "dependencies": {
@@ -32,6 +35,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "1.12.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",

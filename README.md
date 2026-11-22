@@ -20,6 +20,7 @@ AI assistants build working apps quickly, but they rarely add pipelines, access 
 |                | Bundle-size budget for browser JavaScript (`budgets.json`)                    | Every pull request         |
 |                | AI evaluation: known-answer cases must meet the baseline (`evals/`)           | Nightly                    |
 | AI agents      | Guardrails: no check weakened (skipped tests, raised budgets, edited CI)      | Every pull request         |
+|                | SRE agent: investigates an alert, proposes a fix as a draft pull request      | When an alert fires        |
 | Infrastructure | Azure templates in `infra/` pass the Bicep linter and compile                 | Every pull request         |
 | Running app    | Smoke test: the built server starts, answers, and refuses anonymous API calls | Every pull request         |
 | Supply chain   | Production dependency audit                                                   | Nightly                    |
@@ -94,6 +95,36 @@ npm run verify   # everything CI runs, locally
 ```
 
 Local runs need no set-up: without `DATABASE_URL` the server uses an in-process Postgres (PGlite) and a random signing secret. In production (`NODE_ENV=production`) it refuses to start without `APP_JWT_SECRET` and `DATABASE_URL`. See `.env.example`.
+
+## SRE agent: incident response
+
+When an alert fires on a tool, `.github/workflows/incident.yml` starts the SRE agent on [Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview). It investigates, keeps people updated, and proposes a fix as a draft pull request. **A person reviews and merges; the agent never changes production.**
+
+1. **The alert starts it.** An Azure Monitor action group calls a Logic App, which calls GitHub's `repository_dispatch` with the tool and the alert.
+2. **It investigates with read-only tools** that this workflow runs for it: `get_alert`, `get_metrics` (Azure Monitor), `get_logs` (Log Analytics), `get_recent_deploys` (container app revisions) and `get_diff` (GitHub). It follows a runbook skill (`sre/agent/runbook/`), reads team memory (the service map, known noise, past incidents) and keeps its own notebook between incidents.
+3. **It reads and tests the code** in its own sandbox: a snapshot of the deployed branch, with no internet except package registries and no credentials.
+4. **It posts updates** for the tool's owner (`post_update`, to Teams).
+5. **It proposes a fix** (`propose_fix`): a revert when the suspect deploy is one small change, or else the smallest code fix plus a dated regression test. This workflow, not the agent, applies it in a clean copy of the repository, runs the Guardrails rules, lint, types and tests, and only then pushes an `sre-agent/` branch and opens a **draft** pull request, which runs CI like any other.
+6. **It records a post-mortem** in the team's format, and a note for the next incident.
+
+| The agent can                                 | The agent can't                                              |
+| --------------------------------------------- | ------------------------------------------------------------ |
+| Read alerts, metrics, logs, deploys and diffs | Hold any credential: GitHub and Azure calls run outside it   |
+| Run the code's tests in its sandbox           | Change workflows, agent settings, budgets, baselines, checks |
+| Propose a fix (confidence of 70% or more)     | Add dependencies, push to main, merge or deploy              |
+| Write to its own notebook                     | Change the team's memory, or spend past its budget           |
+
+**Try the demo:** `npm run sre:setup` once, then `npm run sre:demo`. The `sre-demo` branch carries a planted bug: a new route with a column-name typo, which passes every existing test because the route has none. The demo incident (`sre/demo/incident.json`) scripts the alert, metrics and logs; the deploy record, diff and code come from the real branch.
+
+**Plug it in:**
+
+1. **Secrets:** `ANTHROPIC_API_KEY`; `SRE_AGENT_GITHUB_TOKEN`, a fine-grained token (or GitHub App) with contents and pull requests write on the tools' repositories, without which the agent diagnoses only; and `TEAMS_WEBHOOK_URL`.
+2. **Azure:** the read-only identity from the afternoon report, plus **Monitoring Reader** and **Log Analytics Reader**. Repository variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` and `SRE_AGENT_ENABLED=true`.
+3. **`ops/sre-agent.json`:** one entry per tool (repository, base branch, resource group, container app, Log Analytics workspace ID, reviewer), the model, and the spend cap per incident (`budgetUsd`, enforced by Managed Agents).
+4. **The alert:** in the action group, call a Logic App that posts to `https://api.github.com/repos/<owner>/<repo>/dispatches` with `{"event_type": "azure-alert", "client_payload": {"tool": "<tool>", "alert": "<alert id>"}}`.
+5. **Setup:** `npm run sre:setup` creates the agent, its sandbox, the runbook skill and both memory stores, and records their IDs in `ops/sre-agent.lock.json`. Run it again after changing the agent's files.
+
+Managed Agents runs on Anthropic's platform. On Microsoft Foundry, the same tools and runbook fit Foundry Agent Service.
 
 ## Switch these on in the repository's settings
 

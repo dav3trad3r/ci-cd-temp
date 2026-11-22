@@ -1,0 +1,79 @@
+# Incident response: when an alert fires, the SRE agent (Claude Managed Agents) investigates with
+# read-only tools, posts updates, and proposes a fix as a draft pull request for a person to review.
+#
+# Started by an Azure Monitor action group through a Logic App that calls GitHub's
+# repository_dispatch API (event type "azure-alert"), or by hand from the Actions tab, where an
+# empty alert runs the demo incident. Does nothing until the SRE_AGENT_ENABLED variable is "true".
+
+name: Incident
+
+on:
+  repository_dispatch:
+    types: [azure-alert]
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: Tool name in ops/sre-agent.json
+        default: demo-tool
+      alert:
+        description: Alert ID or name (leave empty to run the demo incident)
+        required: false
+      diagnose_only:
+        description: Diagnose only, no fix
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write # sign in to Azure with OIDC: no stored Azure credentials
+
+jobs:
+  respond:
+    name: SRE agent
+    if: vars.SRE_AGENT_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      # From the alert or the form. Passed as environment variables, never pasted into a script.
+      TOOL: ${{ github.event.client_payload.tool || inputs.tool }}
+      ALERT: ${{ github.event.client_payload.alert || inputs.alert }}
+      DIAGNOSE_ONLY: ${{ inputs.diagnose_only }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the agent reads recent commits and their diffs
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+
+      - name: Sign in to Azure (read-only identity, OIDC)
+        if: env.ALERT != ''
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Azure CLI extensions
+        if: env.ALERT != ''
+        run: |
+          az extension add --name resource-graph --upgrade --only-show-errors
+          az extension add --name containerapp --upgrade --only-show-errors
+
+      - name: Run the SRE agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Opens the draft pull request. Without it the agent diagnoses only.
+          SRE_AGENT_GITHUB_TOKEN: ${{ secrets.SRE_AGENT_GITHUB_TOKEN }}
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          flags=""
+          if [ "$DIAGNOSE_ONLY" = "true" ] || [ -z "$SRE_AGENT_GITHUB_TOKEN" ]; then flags="--no-fix"; fi
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if [ -z "$ALERT" ]; then
+            npm run sre:demo -- $flags
+          else
+            npm run sre -- --tool "$TOOL" --alert "$ALERT" $flags
+          fi

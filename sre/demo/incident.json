@@ -1,0 +1,75 @@
+{
+  "about": "Demo incident for `npm run sre:demo`. The alert, metrics and logs below are made up to match the bug planted on the sre-demo branch. The deploy record and diff come from that branch's real commits. Times are minutes before the alert fired.",
+  "id": "INC-DEMO-1042",
+  "tool": "demo-tool",
+  "baseBranch": "sre-demo",
+  "deployMinutesBeforeAlert": 7,
+  "alert": {
+    "name": "demo-tool 5xx responses",
+    "severity": "Sev2",
+    "condition": "Requests with a 5xx status above 5 in 5 minutes",
+    "value": 14,
+    "target": "container app demo-tool (rg-demo-tool)"
+  },
+  "metrics": {
+    "intervalMinutes": 5,
+    "startMinutesBeforeAlert": 60,
+    "requests": [118, 124, 121, 130, 127, 119, 125, 133, 129, 126, 131, 128],
+    "requests_5xx": [0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 11, 14],
+    "response_time_ms_p95": [84, 88, 86, 91, 87, 85, 89, 92, 90, 95, 93, 94]
+  },
+  "logs": [
+    { "minutesBeforeAlert": 44, "level": "info", "message": "GET /api/items 200 21ms" },
+    {
+      "minutesBeforeAlert": 31,
+      "level": "warn",
+      "message": "GET /api/items 401 sign_in_required (expired token)"
+    },
+    { "minutesBeforeAlert": 18, "level": "info", "message": "GET /api/items/3f2a… 200 14ms" },
+    {
+      "minutesBeforeAlert": 7,
+      "level": "info",
+      "message": "Revision demo-tool--r50fbc9d started (image demo-tool:50fbc9d)"
+    },
+    {
+      "minutesBeforeAlert": 6.9,
+      "level": "warn",
+      "message": "connect ECONNREFUSED 10.0.0.12:5432 (retrying)"
+    },
+    { "minutesBeforeAlert": 6.8, "level": "info", "message": "Connected to Postgres" },
+    {
+      "minutesBeforeAlert": 6.4,
+      "level": "error",
+      "message": "GET /api/items/due-soon 500: error: column \"due_date\" does not exist (hint: Perhaps you meant to reference the column \"items.due_at\".)"
+    },
+    { "minutesBeforeAlert": 6.1, "level": "info", "message": "GET /api/items 200 19ms" },
+    {
+      "minutesBeforeAlert": 5.2,
+      "level": "error",
+      "message": "GET /api/items/due-soon 500: error: column \"due_date\" does not exist (hint: Perhaps you meant to reference the column \"items.due_at\".)"
+    },
+    { "minutesBeforeAlert": 4.7, "level": "info", "message": "POST /api/items 201 31ms" },
+    {
+      "minutesBeforeAlert": 4.0,
+      "level": "error",
+      "message": "GET /api/items/due-soon 500: error: column \"due_date\" does not exist (hint: Perhaps you meant to reference the column \"items.due_at\".)"
+    },
+    {
+      "minutesBeforeAlert": 3.3,
+      "level": "warn",
+      "message": "GET /api/items 401 sign_in_required (expired token)"
+    },
+    {
+      "minutesBeforeAlert": 2.6,
+      "level": "error",
+      "message": "GET /api/items/due-soon 500: error: column \"due_date\" does not exist (hint: Perhaps you meant to reference the column \"items.due_at\".)"
+    },
+    { "minutesBeforeAlert": 1.9, "level": "info", "message": "GET /api/items 200 18ms" },
+    {
+      "minutesBeforeAlert": 1.2,
+      "level": "error",
+      "message": "GET /api/items/due-soon 500: error: column \"due_date\" does not exist (hint: Perhaps you meant to reference the column \"items.due_at\".)"
+    },
+    { "minutesBeforeAlert": 0.4, "level": "info", "message": "GET /healthz 200 2ms" }
+  ]
+}
