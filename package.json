@@ -24,6 +24,9 @@
     "eval": "tsx evals/run.ts",
     "report": "tsx scripts/report/run.ts",
     "report:sample": "tsx scripts/report/run.ts --sample",
+    "sre:setup": "tsx scripts/sre/setup.ts",
+    "sre": "tsx scripts/sre/run.ts",
+    "sre:demo": "tsx scripts/sre/run.ts --demo",
     "verify": "npm run check:guardrails && npm run format:check && npm run lint && npm run typecheck && npm test && npm run build && npm run check:frontend && npm run check:infra && npm run smoke"
   },
   "dependencies": {
@@ -35,6 +38,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/foundry-sdk": "1.1.1",
+    "@anthropic-ai/sdk": "1.12.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",

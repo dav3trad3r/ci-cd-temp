@@ -6,3 +6,6 @@ coverage/
 !.env.example
 *.log
 .DS_Store
+
+# SRE agent run output (incident notes, post-mortems, pull request drafts)
+sre-output/
