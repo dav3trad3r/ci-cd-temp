@@ -22,6 +22,8 @@
     "check:guardrails": "tsx scripts/check-guardrails.ts",
     "check:infra": "node scripts/check-infra.mjs",
     "eval": "tsx evals/run.ts",
+    "report": "tsx scripts/report/run.ts",
+    "report:sample": "tsx scripts/report/run.ts --sample",
     "sre:setup": "tsx scripts/sre/setup.ts",
     "sre": "tsx scripts/sre/run.ts",
     "sre:demo": "tsx scripts/sre/run.ts --demo",
@@ -35,6 +37,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@anthropic-ai/foundry-sdk": "1.1.1",
     "@anthropic-ai/sdk": "1.12.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.6.6",
