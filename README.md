@@ -6,25 +6,26 @@ AI assistants build working apps quickly, but they rarely add pipelines, access 
 
 ## What runs, and when
 
-| Layer          | Check                                                                         | When                       |
-| -------------- | ----------------------------------------------------------------------------- | -------------------------- |
-| Hygiene        | Install from the lockfile, format, lint, type check, build                    | Every pull request         |
-| Security       | Access tests: no sign-in gets 401, another user's data gets 404               | Every pull request         |
-|                | Row-level security switched on for every table                                | Every pull request         |
-|                | No secrets in the browser bundle, no secret-like `VITE_` variables            | Every pull request         |
-|                | Dependency review (blocks packages with known high-severity issues)           | Every pull request         |
-|                | CodeQL code scanning                                                          | Every pull request, weekly |
-|                | Dependabot updates for packages and pinned actions                            | Weekly                     |
-| Regression     | A test for every fixed bug (`tests/regressions/`)                             | Every pull request         |
-|                | API contract snapshots: response shapes cannot change by accident             | Every pull request         |
-|                | Bundle-size budget for browser JavaScript (`budgets.json`)                    | Every pull request         |
-|                | AI evaluation: known-answer cases must meet the baseline (`evals/`)           | Nightly                    |
-| AI agents      | Guardrails: no check weakened (skipped tests, raised budgets, edited CI)      | Every pull request         |
-|                | SRE agent: investigates an alert, proposes a fix as a draft pull request      | When an alert fires        |
-| Infrastructure | Azure templates in `infra/` pass the Bicep linter and compile                 | Every pull request         |
-| Running app    | Smoke test: the built server starts, answers, and refuses anonymous API calls | Every pull request         |
-| Supply chain   | Production dependency audit                                                   | Nightly                    |
-| Operations     | Afternoon report: drift, changes, alerts, spend and what shipped, to Teams    | Weekdays, 3 pm             |
+| Layer          | Check                                                                             | When                       |
+| -------------- | --------------------------------------------------------------------------------- | -------------------------- |
+| Hygiene        | Install from the lockfile, format, lint, type check, build                        | Every pull request         |
+| Security       | Access tests: no sign-in gets 401, another user's data gets 404                   | Every pull request         |
+|                | Row-level security switched on for every table                                    | Every pull request         |
+|                | No secrets in the browser bundle, no secret-like `VITE_` variables                | Every pull request         |
+|                | Dependency review (blocks packages with known high-severity issues)               | Every pull request         |
+|                | CodeQL code scanning                                                              | Every pull request, weekly |
+|                | Dependabot updates for packages and pinned actions                                | Weekly                     |
+| Regression     | A test for every fixed bug (`tests/regressions/`)                                 | Every pull request         |
+|                | API contract snapshots: response shapes cannot change by accident                 | Every pull request         |
+|                | Bundle-size budget for browser JavaScript (`budgets.json`)                        | Every pull request         |
+|                | AI evaluation: known-answer cases must meet the baseline (`evals/`)               | Nightly                    |
+| AI agents      | Guardrails: no check weakened (skipped tests, raised budgets, edited CI)          | Every pull request         |
+|                | SRE agent: investigates an alert, proposes a fix as a draft pull request          | When an alert fires        |
+| Review         | A Pipeline approver approves; only Pipeline approvers merge (`.github/rulesets/`) | Every pull request         |
+| Infrastructure | Azure templates in `infra/` pass the Bicep linter and compile                     | Every pull request         |
+| Running app    | Smoke test: the built server starts, answers, and refuses anonymous API calls     | Every pull request         |
+| Supply chain   | Production dependency audit                                                       | Nightly                    |
+| Operations     | Afternoon report: drift, changes, alerts, spend and what shipped, to Teams        | Weekdays, 3 pm             |
 
 Every pull request finishes in a few minutes. Slow or costly checks run nightly so they never hold up a change.
 
@@ -161,9 +162,11 @@ Some protections are repository settings rather than files:
 
 1. **Settings → General:** tick **Template repository**, so people can start new tools from it.
 2. **Settings → Advanced Security:** turn on secret scanning and **push protection**, which blocks a commit that contains a key.
-3. **Settings → Rules → Rulesets:** for `main`, require a pull request and require the **Checks** and **Guardrails** status checks to pass before merging.
-4. **Issues → Labels:** create the `guardrail-change` label, used to approve an intended change to the checks.
-5. **For teams:** in the same ruleset, tick **Require review from Code Owners**, so changes to `.github/` and the migrations need the owners in `.github/CODEOWNERS` to approve them.
+3. **A Pipeline approvers team:** in the organisation, create a `pipeline-approvers` team with at least two people, so merging never depends on one person. Make it the reviewer for every pull request in `.github/CODEOWNERS` (`* @your-org/pipeline-approvers`).
+4. **The review and merge rules:** `.github/rulesets/` holds two rulesets for `main`. Check them with `npm run rulesets:apply -- --org your-org --dry-run`, then apply them with an organisation admin token in `GITHUB_ADMIN_TOKEN`: without `--repo` they cover every repository in the organisation, and `--repo <name>` applies them to one. If the organisation's plan doesn't offer organisation-wide rulesets, apply them per repository.
+   - **Protect main:** a pull request; an approval from a code owner who isn't the last person to push; fresh approval after new commits; review threads resolved; the **Checks** and **Guardrails** jobs passing; no force pushes or deletion. Nobody is exempt.
+   - **Only Pipeline approvers merge:** nobody else can update `main`, and the team can only do it through a pull request. Being exempt from this ruleset doesn't exempt them from Protect main, so their own changes still need someone else's approval.
+5. **Issues → Labels:** create the `guardrail-change` label, used to approve an intended change to the checks.
 
 ## Before production
 

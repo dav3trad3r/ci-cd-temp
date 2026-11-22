@@ -20,7 +20,6 @@
       "Bash(npm install *)",
       "Bash(npm uninstall *)",
       "Bash(npm update *)",
-      "Bash(gh pr merge *)",
       "Edit(.github/**)",
       "Edit(.claude/**)",
       "Edit(AGENTS.md)",
@@ -51,7 +50,11 @@
       "Bash(az * delete *)",
       "Bash(terraform destroy *)",
       "Bash(gh repo delete *)",
-      "Bash(npm publish *)"
+      "Bash(npm publish *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh pr review *--approve*)",
+      "Bash(gh api *rulesets*)",
+      "Bash(npm run rulesets:apply *)"
     ]
   }
 }
