@@ -142,6 +142,16 @@ describe("guardrails", () => {
     }
   });
 
+  test("flags edits to the review and merge rules for main", () => {
+    for (const path of [
+      ".github/rulesets/protect-main.json",
+      "scripts/rulesets.ts",
+      "scripts/apply-rulesets.ts",
+    ]) {
+      expect(rules(change({ files: [{ status: "M", path }] }))).toEqual(["guarded file changed"]);
+    }
+  });
+
   test("flags edits to workflows and agent settings, except Dependabot bumping actions", () => {
     const files = [{ status: "M", path: ".github/workflows/ci.yml" }];
     expect(rules(change({ files }))).toEqual(["guarded file changed"]);

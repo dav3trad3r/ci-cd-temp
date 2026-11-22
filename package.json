@@ -21,6 +21,7 @@
     "smoke": "node scripts/smoke.mjs",
     "check:guardrails": "tsx scripts/check-guardrails.ts",
     "check:infra": "node scripts/check-infra.mjs",
+    "rulesets:apply": "tsx scripts/apply-rulesets.ts",
     "eval": "tsx evals/run.ts",
     "report": "tsx scripts/report/run.ts",
     "report:sample": "tsx scripts/report/run.ts --sample",

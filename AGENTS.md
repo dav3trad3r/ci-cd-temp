@@ -7,6 +7,8 @@ These rules apply to any coding agent working in this repository (Claude Code, G
 - Work on a branch and open a pull request. Never push to `main`: it is protected, and the push will be refused.
 - Run `npm run verify` before opening a pull request. It runs everything CI runs.
 - Keep each pull request to one change, and say in the description what changed and why.
+- Every pull request needs an approval from a Pipeline approver (the code owners), and only Pipeline approvers can merge into `main`. The rules are in `.github/rulesets/`.
+- Agents never approve, merge, or change who can. An agent's pull request waits for a person like any other.
 
 ## Fix the code, never the check
 

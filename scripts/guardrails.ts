@@ -38,6 +38,9 @@ export interface Finding {
 export const GUARDED_FILES = [
   ".github/workflows/",
   ".github/CODEOWNERS",
+  ".github/rulesets/",
+  "scripts/rulesets.ts",
+  "scripts/apply-rulesets.ts",
   ".claude/",
   "AGENTS.md",
   "CLAUDE.md",
