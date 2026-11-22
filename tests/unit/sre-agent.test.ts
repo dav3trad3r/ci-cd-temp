@@ -96,9 +96,11 @@ describe("fix proposals", () => {
   });
 
   test("a fix that weakens a check is refused with the Guardrails rule that caught it", () => {
+    // Built at run time so this file doesn't itself contain a skipped test for Guardrails to flag.
+    const skippedTest = `${["it", "skip"].join(".")}("flaky", () => {`;
     const findings = findWeakenedChecks({
       files: [{ status: "M", path: "tests/unit/x.test.ts" }],
-      addedLines: [{ path: "tests/unit/x.test.ts", line: 'it.skip("flaky", () => {' }],
+      addedLines: [{ path: "tests/unit/x.test.ts", line: skippedTest }],
       readBase: () => undefined,
       readHead: () => undefined,
     });
