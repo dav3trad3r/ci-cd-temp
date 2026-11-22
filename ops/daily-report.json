@@ -1,0 +1,24 @@
+{
+  "title": "Platform report",
+  "timeZone": "Australia/Brisbane",
+  "tools": [
+    {
+      "name": "leasing-assistant",
+      "owner": "jane.citizen@example.com",
+      "resourceGroup": "rg-leasing-assistant",
+      "parameters": "infra/tools/example.bicepparam",
+      "dailyBudget": 5
+    }
+  ],
+  "watchResourceGroups": ["rg-platform"],
+  "foundry": {
+    "resource": "",
+    "model": "claude-opus-5-5",
+    "auth": "key",
+    "keyVault": "",
+    "secretName": "foundry-api-key"
+  },
+  "github": {
+    "query": ""
+  }
+}
