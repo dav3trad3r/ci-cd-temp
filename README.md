@@ -23,6 +23,7 @@ AI assistants build working apps quickly, but they rarely add pipelines, access 
 | Infrastructure | Azure templates in `infra/` pass the Bicep linter and compile                 | Every pull request         |
 | Running app    | Smoke test: the built server starts, answers, and refuses anonymous API calls | Every pull request         |
 | Supply chain   | Production dependency audit                                                   | Nightly                    |
+| Operations     | Afternoon report: drift, changes, alerts, spend and what shipped, to Teams    | Weekdays, 3 pm             |
 
 Every pull request finishes in a few minutes. Slow or costly checks run nightly so they never hold up a change.
 
@@ -84,6 +85,34 @@ The Guardrails check fails a pull request that:
 ## Deploy to Azure
 
 `infra/` holds Bicep templates (Azure's infrastructure-as-code language) for running a tool on Azure Container Apps the standard way: Entra sign-in, its own identity and Key Vault, scale to zero, logs and alerts to the platform team, and owner, cost-centre and data-classification tags. See [infra/README.md](infra/README.md).
+
+## Afternoon platform report
+
+Every weekday at 3 pm Brisbane time, `.github/workflows/daily-report.yml` posts a short report to a Teams channel for tool owners and the people they report to. Scripts gather the facts with read-only access, an agent (Claude on Microsoft Foundry) writes them up in plain English, and people decide what to do.
+
+| It checks                    | How                                                                                        |
+| ---------------------------- | ------------------------------------------------------------------------------------------ |
+| Drift                        | Bicep what-if for each tool: settings changed outside the code, resources missing          |
+| Resources made outside code  | Azure Resource Graph: anything in a watched group without the `managed-by: bicep` tag      |
+| Changes in the last 24 hours | Azure Resource Graph: what changed, who changed it, and from where (portal, CLI, pipeline) |
+| Alerts                       | Azure Monitor alerts that started in the last 24 hours, matched to each tool               |
+| Yesterday's spend            | Azure Cost Management, per tool through the `tool` tag, against each tool's daily budget   |
+| What shipped                 | Pull requests merged in the last 24 hours, with guardrail exceptions marked                |
+
+Anything that needs a person comes first: drift, hand-made resources, a tool over budget, a severe alert still open. A check that couldn't run is named, never hidden. If the agent isn't set up, fails or declines, the plain report goes out instead, so the report always arrives and is always right. The report can't change anything: its identity can only read.
+
+**Try it now:** `npm run report:sample` prints the report from example data, with no Azure needed. `npm run report:sample -- --post` sends that example to Teams, to test the webhook.
+
+**Plug it in:**
+
+1. **A read-only Azure identity.** Create an app registration (or user-assigned managed identity) for the report and add a federated credential for GitHub Actions: this repository, branch `main` (scheduled runs use the default branch). Give it:
+   - **Reader** and **Cost Management Reader** on the subscription.
+   - A custom role on each tool's resource group with `Microsoft.Resources/deployments/*`, which what-if needs. It still can't change a resource: Azure checks the identity's own rights on each one, and those are read-only.
+   - For the agent, either **Key Vault Secrets User** on the vault holding the Foundry key, or (with `"auth": "entra"`, no key at all) a role that can call the Foundry resource's models, such as **Azure AI User**.
+2. **Repository variables:** `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` and `ANTHROPIC_FOUNDRY_RESOURCE` (the Foundry resource name). The workflow does nothing until `AZURE_CLIENT_ID` is set.
+3. **Repository secrets:** `TEAMS_WEBHOOK_URL`, from a Teams channel's Workflows ("Post to a channel when a webhook request is received"). Optional: `ANTHROPIC_FOUNDRY_API_KEY` if the key isn't in Key Vault, and `REPORT_GITHUB_TOKEN`, a read-only token, to report on every repository in the organisation.
+4. **`ops/daily-report.json`:** one entry per tool (name, owner, resource group, parameters file, daily budget), the shared groups to watch, the Claude model or deployment name in Foundry, the Key Vault holding its key, and the GitHub search (for example `org:your-org`).
+5. **Run it:** Actions → Daily report → Run workflow. Locally, after `az login`: `npm run report -- --dry-run`.
 
 ## Use it
 
