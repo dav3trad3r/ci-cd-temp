@@ -63,9 +63,9 @@ describe("review and merge rules for main", () => {
   });
 
   test("CODEOWNERS names a reviewer for every pull request", () => {
-    expect(defaultCodeOwner("# comment\n*   @place/pipeline-approvers\n/db/  @place/data\n")).toBe(
-      "@place/pipeline-approvers",
-    );
+    expect(
+      defaultCodeOwner("# comment\n*   @your-org/pipeline-approvers\n/db/  @your-org/data\n"),
+    ).toBe("@your-org/pipeline-approvers");
     expect(defaultCodeOwner(readFileSync(".github/CODEOWNERS", "utf8"))).toBeDefined();
   });
 

@@ -1,4 +1,4 @@
-// The agent step: Claude, through Place's Microsoft Foundry resource, turns the facts into a
+// The agent step: Claude, through your Microsoft Foundry resource, turns the facts into a
 // short report for people who aren't engineers. If it isn't set up, fails or declines, the
 // caller sends the plain report instead, so the report always goes out and is always right.
 import { AnthropicFoundry } from "@anthropic-ai/foundry-sdk";

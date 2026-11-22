@@ -148,8 +148,8 @@ describe("queries", () => {
   });
 
   test("the GitHub search covers merges in the last 24 hours", () => {
-    expect(mergedSearchQuery("org:place", new Date("2026-11-22T05:00:00Z"))).toBe(
-      "org:place is:pr is:merged merged:>=2026-11-22T05:00:00+00:00",
+    expect(mergedSearchQuery("org:your-org", new Date("2026-11-22T05:00:00Z"))).toBe(
+      "org:your-org is:pr is:merged merged:>=2026-11-22T05:00:00+00:00",
     );
   });
 });
@@ -198,20 +198,20 @@ describe("cost, alerts and pull requests", () => {
         {
           title: "Raise budget",
           html_url: "u1",
-          repository_url: "https://api.github.com/repos/place/tool",
+          repository_url: "https://api.github.com/repos/your-org/tool",
           labels: [{ name: "guardrail-change" }],
         },
         {
           title: "Fix typo",
           html_url: "u2",
-          repository_url: "https://api.github.com/repos/place/tool",
+          repository_url: "https://api.github.com/repos/your-org/tool",
           labels: [],
         },
       ],
     };
     expect(parsePulls(result).map((p) => [p.repo, p.exception])).toEqual([
-      ["place/tool", true],
-      ["place/tool", false],
+      ["your-org/tool", true],
+      ["your-org/tool", false],
     ]);
   });
 });

@@ -4,28 +4,46 @@ A starter repo for internal tools built with AI coding assistants (Claude Code, 
 
 AI assistants build working apps quickly, but they rarely add pipelines, access checks or scanning unless asked. This template makes the safe way the default: click **Use this template**, build your tool, and every pull request is checked before it can reach production.
 
+## Status
+
+A working prototype and a foundation to adapt, not a finished platform. This is what runs today:
+
+| Part                                       | Status             | Where it stands                                                                                                                                                                                                                  |
+| ------------------------------------------ | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CI, security and regression checks         | **Working**        | Run on every pull request                                                                                                                                                                                                        |
+| Agent rules and permissions                | **Working**        | `AGENTS.md` and `.claude/settings.json`                                                                                                                                                                                          |
+| Guardrails check                           | **Working**        | Runs on every pull request and flags a weakened check. It becomes required to merge once the review rules are applied                                                                                                            |
+| Nightly AI evaluation and dependency audit | **Working**        | The evaluation uses a keyword stand-in until a real model is connected                                                                                                                                                           |
+| Azure templates                            | **Partly proved**  | Lint and compile on every pull request. The tool template has been deployed to a sandbox; the platform template has only been previewed with what-if                                                                             |
+| Dependabot                                 | **Partly working** | Action updates work. npm updates failed on their first runs and need fixing                                                                                                                                                      |
+| Afternoon report                           | **Not connected**  | Its Azure checks have run read-only against a sandbox. The schedule is off, and the Teams post and AI write-up haven't run                                                                                                       |
+| SRE agent                                  | **Not connected**  | Ran end to end on a scripted incident with a planted bug ([draft PR #12](https://github.com/dav3trad3r/ci-cd-temp/pull/12)). Its Azure tools, the alert trigger and opening pull requests directly from the workflow haven't run |
+| Review and merge rules                     | **Not applied**    | Dry-run tested. They need a GitHub organisation with a Pipeline approvers team                                                                                                                                                   |
+| Deploy pipeline                            | **Next**           | Not built: build once, deploy to staging, verify, promote, roll back                                                                                                                                                             |
+| Feature map and live verification          | **Next**           | Not built: a map of each tool's features, checked against the deployed tool                                                                                                                                                      |
+
 ## What runs, and when
 
-| Layer          | Check                                                                             | When                       |
-| -------------- | --------------------------------------------------------------------------------- | -------------------------- |
-| Hygiene        | Install from the lockfile, format, lint, type check, build                        | Every pull request         |
-| Security       | Access tests: no sign-in gets 401, another user's data gets 404                   | Every pull request         |
-|                | Row-level security switched on for every table                                    | Every pull request         |
-|                | No secrets in the browser bundle, no secret-like `VITE_` or `NEXT_PUBLIC_` names  | Every pull request         |
-|                | Dependency review (blocks packages with known high-severity issues)               | Every pull request         |
-|                | CodeQL code scanning                                                              | Every pull request, weekly |
-|                | Dependabot updates for packages and pinned actions                                | Weekly                     |
-| Regression     | A test for every fixed bug (`tests/regressions/`)                                 | Every pull request         |
-|                | API contract snapshots: response shapes cannot change by accident                 | Every pull request         |
-|                | Bundle-size budget for browser JavaScript (`budgets.json`)                        | Every pull request         |
-|                | AI evaluation: known-answer cases must meet the baseline (`evals/`)               | Nightly                    |
-| AI agents      | Guardrails: no check weakened (skipped tests, raised budgets, edited CI)          | Every pull request         |
-|                | SRE agent: investigates an alert, proposes a fix as a draft pull request          | When an alert fires        |
-| Review         | A Pipeline approver approves; only Pipeline approvers merge (`.github/rulesets/`) | Every pull request         |
-| Infrastructure | Azure templates in `infra/` pass the Bicep linter and compile                     | Every pull request         |
-| Running app    | Smoke test: the built server starts, answers, and refuses anonymous API calls     | Every pull request         |
-| Supply chain   | Production dependency audit                                                       | Nightly                    |
-| Operations     | Afternoon report: drift, changes, alerts, spend and what shipped, to Teams        | Weekdays, 3 pm             |
+| Layer          | Check                                                                             | When                             |
+| -------------- | --------------------------------------------------------------------------------- | -------------------------------- |
+| Hygiene        | Install from the lockfile, format, lint, type check, build                        | Every pull request               |
+| Security       | Access tests: no sign-in gets 401, another user's data gets 404                   | Every pull request               |
+|                | Row-level security switched on for every table                                    | Every pull request               |
+|                | No secrets in the browser bundle, no secret-like `VITE_` or `NEXT_PUBLIC_` names  | Every pull request               |
+|                | Dependency review (blocks packages with known high-severity issues)               | Every pull request               |
+|                | CodeQL code scanning                                                              | Every pull request, weekly       |
+|                | Dependabot updates for packages and pinned actions                                | Weekly                           |
+| Regression     | A test for every fixed bug (`tests/regressions/`)                                 | Every pull request               |
+|                | API contract snapshots: response shapes cannot change by accident                 | Every pull request               |
+|                | Bundle-size budget for browser JavaScript (`budgets.json`)                        | Every pull request               |
+|                | AI evaluation: known-answer cases must meet the baseline (`evals/`)               | Nightly                          |
+| AI agents      | Guardrails: no check weakened (skipped tests, raised budgets, edited CI)          | Every pull request               |
+|                | SRE agent: investigates an alert, proposes a fix as a draft pull request          | On an alert, once connected      |
+| Review         | A Pipeline approver approves; only Pipeline approvers merge (`.github/rulesets/`) | Every pull request, once applied |
+| Infrastructure | Azure templates in `infra/` pass the Bicep linter and compile                     | Every pull request               |
+| Running app    | Smoke test: the built server starts, answers, and refuses anonymous API calls     | Every pull request               |
+| Supply chain   | Production dependency audit                                                       | Nightly                          |
+| Operations     | Afternoon report: drift, changes, alerts, spend and what shipped, to Teams        | Weekdays 3 pm, once connected    |
 
 Every pull request finishes in a few minutes. Slow or costly checks run nightly so they never hold up a change.
 
@@ -90,7 +108,7 @@ The Guardrails check fails a pull request that:
 
 ## Afternoon platform report
 
-Every weekday at 3 pm Brisbane time, `.github/workflows/daily-report.yml` posts a short report to a Teams channel for tool owners and the people they report to. Scripts gather the facts with read-only access, an agent (Claude on Microsoft Foundry) writes them up in plain English, and people decide what to do.
+Once connected, every weekday at 3 pm Brisbane time, `.github/workflows/daily-report.yml` posts a short report to a Teams channel for tool owners and the people they report to. Scripts gather the facts with read-only access, an agent (Claude on Microsoft Foundry) writes them up in plain English, and people decide what to do.
 
 | It checks                    | How                                                                                        |
 | ---------------------------- | ------------------------------------------------------------------------------------------ |
@@ -128,7 +146,7 @@ Local runs need no set-up: without `DATABASE_URL` the server uses an in-process 
 
 ## SRE agent: incident response
 
-When an alert fires on a tool, `.github/workflows/incident.yml` starts the SRE agent on [Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview). It investigates, keeps people updated, and proposes a fix as a draft pull request. **A person reviews and merges; the agent never changes production.**
+Once connected, when an alert fires on a tool, `.github/workflows/incident.yml` starts the SRE agent on [Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview). It investigates, keeps people updated, and proposes a fix as a draft pull request. **A person reviews and merges; the agent never changes production.**
 
 1. **The alert starts it.** An Azure Monitor action group calls a Logic App, which calls GitHub's `repository_dispatch` with the tool and the alert.
 2. **It investigates with read-only tools** that this workflow runs for it: `get_alert`, `get_metrics` (Azure Monitor), `get_logs` (Log Analytics), `get_recent_deploys` (container app revisions) and `get_diff` (GitHub). It follows a runbook skill (`sre/agent/runbook/`), reads team memory (the service map, known noise, past incidents) and keeps its own notebook between incidents.

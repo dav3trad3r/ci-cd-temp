@@ -1,7 +1,7 @@
-// Applies the review and merge rules in .github/rulesets/ to Place's GitHub organisation.
-//   npm run rulesets:apply -- --org place --dry-run                  show what would be sent
-//   npm run rulesets:apply -- --org place                            every repository in the organisation
-//   npm run rulesets:apply -- --org place --repo leasing-assistant   one repository
+// Applies the review and merge rules in .github/rulesets/ to your GitHub organisation.
+//   npm run rulesets:apply -- --org your-org --dry-run               show what would be sent
+//   npm run rulesets:apply -- --org your-org                         every repository in the organisation
+//   npm run rulesets:apply -- --org your-org --repo leasing-assistant one repository
 // Options: --team <slug> (default pipeline-approvers). Needs GITHUB_ADMIN_TOKEN: an organisation
 // admin token (or a repository admin token with --repo). Running it again updates the rulesets.
 import { readFileSync } from "node:fs";
