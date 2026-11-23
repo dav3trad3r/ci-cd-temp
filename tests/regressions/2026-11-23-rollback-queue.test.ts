@@ -26,6 +26,7 @@ vi.mock("node:child_process", async (original) => {
     [promisify.custom]: async (_command: string, args: string[]) => {
       azure.calls.push(args);
       const answer = azure.answer(args);
+      if (answer instanceof Error) throw answer;
       return { stdout: answer === null ? "" : JSON.stringify(answer), stderr: "" };
     },
   });
@@ -100,6 +101,7 @@ beforeEach(() => {
   answerStatus = 200;
   timing.retry = 0;
   timing.trafficCheck = 0;
+  timing.busyWait = 1_000;
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => new Response(null, { status: answerStatus })),
@@ -179,6 +181,33 @@ describe("a rollback sticks", () => {
     fakeAzure([live, back]);
     await rollback(target, manifest);
     expect(trafficMoves()).toEqual([`${OLD}=100`]);
+  });
+
+  const refuse = (message: string, times: number) => {
+    const inner = azure.answer;
+    let left = times;
+    azure.answer = (args) => {
+      if (args.join(" ").startsWith("containerapp ingress traffic set") && left > 0) {
+        left -= 1;
+        azure.calls.pop();
+        return Object.assign(new Error("az failed"), { stderr: message });
+      }
+      return inner(args);
+    };
+  };
+
+  test("it waits for an update Azure is still provisioning", async () => {
+    fakeAzure([live, back]);
+    refuse("ERROR: (ContainerAppOperationInProgress) Cannot modify a container app", 2);
+    await rollback(target, manifest);
+    expect(trafficMoves()).toEqual([`${OLD}=100`]);
+  });
+
+  test("any other Azure error still stops it", async () => {
+    fakeAzure([live, back]);
+    refuse("ERROR: (AuthorizationFailed) not allowed", 1);
+    await expect(rollback(target, manifest)).rejects.toThrow("az failed");
+    expect(trafficMoves()).toEqual([]);
   });
 
   test("it puts traffic back if a deploy overwrites it", async () => {

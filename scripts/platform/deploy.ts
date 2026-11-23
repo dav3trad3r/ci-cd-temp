@@ -103,8 +103,23 @@ async function readApp({ app, group }: Target): Promise<AppState> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** How long to wait between tries, and between checks that a rollback stuck. */
-export const timing = { retry: 5_000, trafficCheck: 10_000 };
+/** How long to wait between tries, between checks that a rollback stuck, and for a busy app. */
+export const timing = { retry: 5_000, trafficCheck: 10_000, busyWait: 5 * 60_000 };
+
+/** Azure refuses a change while another is provisioning, so wait for it instead of failing. A
+ *  rollback during a deploy depends on this. */
+async function azWhenFree(args: string[]): Promise<unknown> {
+  const deadline = Date.now() + timing.busyWait;
+  for (;;) {
+    try {
+      return await az(args);
+    } catch (error) {
+      const text = String((error as { stderr?: string }).stderr ?? (error as Error).message);
+      if (!text.includes("ContainerAppOperationInProgress") || Date.now() >= deadline) throw error;
+      await sleep(timing.retry);
+    }
+  }
+}
 
 async function waitUntilAnswering(url: string, tries = 40): Promise<number> {
   let last = 0;
@@ -166,7 +181,7 @@ async function waitUntilHealthy({ app, group }: Target, revision: string, url: s
 }
 
 const setTraffic = ({ app, group }: Target, revision: string) =>
-  az([
+  azWhenFree([
     "containerapp",
     "ingress",
     "traffic",
@@ -180,7 +195,7 @@ const setTraffic = ({ app, group }: Target, revision: string) =>
   ]);
 
 const setLabel = ({ app, group }: Target, label: string, revision: string) =>
-  az([
+  azWhenFree([
     "containerapp",
     "revision",
     "label",
@@ -306,7 +321,7 @@ export async function deployStaging(
       `::warning::${manifest.name} changes its database when it starts, so this staging revision can change production before approval. Set "migrate" in .platform/tool.json to fix it.`,
     );
   }
-  await az([
+  await azWhenFree([
     "containerapp",
     "revision",
     "set-mode",
@@ -323,7 +338,7 @@ export async function deployStaging(
 
   const suffix = revisionSuffix(sha, attempt);
   const revision = `${target.app}--${suffix}`;
-  await az([
+  await azWhenFree([
     "containerapp",
     "update",
     "--name",
@@ -345,7 +360,7 @@ export async function deployStaging(
     );
     return revision;
   } catch (error) {
-    await az([
+    await azWhenFree([
       "containerapp",
       "revision",
       "deactivate",
