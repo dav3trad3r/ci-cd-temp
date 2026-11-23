@@ -243,7 +243,9 @@ async function deployStaging(
     const url = `${labelUrl(before.fqdn, "staging")}${manifest.healthPath}`;
     await waitUntilHealthy(target, revision, url);
     const status = await waitUntilAnswering(url);
-    console.log(`Staging: ${revision} is healthy and answered ${status}. Production is unchanged.`);
+    console.log(
+      `Staging: ${revision} is healthy and answered ${status}. Live traffic hasn't moved.`,
+    );
     return revision;
   } catch (error) {
     await az([
@@ -257,7 +259,9 @@ async function deployStaging(
       "--revision",
       revision,
     ]).catch(() => undefined);
-    console.error(`${revision} was switched off. Production is unchanged.`);
+    console.error(
+      `${revision} was switched off and live traffic hasn't moved. Any migration it ran at startup is still in the database.`,
+    );
     throw error;
   }
 }
@@ -271,7 +275,7 @@ export function hasRequiredReviewers(environment: unknown): boolean {
   return (rules ?? []).some((rule) => rule.type === "required_reviewers");
 }
 
-/** Nothing reaches production without a person, on any GitHub plan, and if this can't be proved
+/** Live traffic never moves without a person, on any GitHub plan, and if this can't be proved
  *  the release stops. Required reviewers on a private repository need GitHub Enterprise: without
  *  them an environment would simply run, so that setting is checked rather than trusted. */
 async function assertReleaseAllowed() {
