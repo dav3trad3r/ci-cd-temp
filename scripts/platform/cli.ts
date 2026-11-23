@@ -160,6 +160,7 @@ const STARTER_PATHS = [
   "tests/regressions/__snapshots__",
   "tests/regressions/api-contract.test.ts",
   "tests/regressions/2026-11-11-due-time-zone.test.ts",
+  "tests/regressions/2026-11-23-due-date-input.test.ts",
   "tests/unit/validation.test.ts",
   "scripts/smoke.mjs",
   "budgets.json",
