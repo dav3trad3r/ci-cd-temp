@@ -245,7 +245,7 @@ async function main() {
 
   if (!dockerAvailable()) {
     // CI always has Docker. Without it a fix is refused, so there's nothing further to prove here.
-    expectThat("Docker is available in CI", !process.env.CI);
+    if (process.env.CI) expectThat("Docker is available in CI", false);
     console.log("- Skipped the sandbox checks: Docker isn't installed on this machine.");
     rmSync(work, { recursive: true, force: true });
     console.log(failures ? `\n${failures} checks failed.` : "\nEvery self-test passed.");
