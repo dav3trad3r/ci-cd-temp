@@ -99,6 +99,7 @@ const MOVE_TRAFFIC = "containerapp ingress traffic set";
 
 describe("a release changes the database only after approval", () => {
   beforeEach(() => {
+    vi.stubEnv("GITHUB_ACTIONS", "false"); // the release check calls GitHub only in Actions
     azure.calls.length = 0;
     timing.retry = 0;
     timing.trafficCheck = 0;
@@ -110,6 +111,7 @@ describe("a release changes the database only after approval", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
   });
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
