@@ -71,8 +71,6 @@ Add `--go` (with `GITHUB_ADMIN_TOKEN`) to create the private repository, move ev
 | **Secrets in the browser, or a Supabase table without row-level security** | Allowed, so it can be fixed             | **Blocked until fixed** |
 | **A secret in the git history**                                            | **Fails**                               | Blocked                 |
 
-Guardrails goes by what a file is, so it covers a migrated tool's own layout: its test scripts, its lint, test and type settings in any folder, skipped or deleted tests, and silenced checks. Dependabot may only move an action's version. A person can still approve an intended change with the `guardrail-change` label.
-
 Lowering the baseline needs no approval. Raising it trips Guardrails and needs a person.
 
 ### How improvements reach every tool
@@ -150,6 +148,8 @@ Every pull request finishes in a few minutes. Slow or costly checks run nightly 
 - **AI evaluation baseline:** `npm run eval` runs the cases in `evals/cases.json` and fails below `evals/baseline.json`. The template's classifier is a keyword stand-in so it runs with no API key; replace it with your model call and the evaluation tells you whether a prompt or model change made results better or worse.
 
 ## Working with AI agents
+
+Guardrails goes by what a file is, so it covers a migrated tool's own layout: its test scripts, its lint, test and type settings in any folder, skipped or deleted tests, and silenced checks. Dependabot may only move an action's version. A person can still approve an intended change with the `guardrail-change` label.
 
 AI coding agents work fast and sound sure of themselves, and when a check fails, the quickest way to a green build is to weaken the check: skip the failing test, raise the budget, silence the linter or edit the workflow. The template guards against that in three layers.
 
