@@ -40,8 +40,6 @@ jobs:
     name: Central actions and image
     runs-on: ubuntu-24.04
     timeout-minutes: 25
-    env:
-      TOOL_DIR: ${{ runner.temp }}/ci-check-tool
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -56,7 +54,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/platform-data/ops"
           cp ops/platform.json "$RUNNER_TEMP/platform-data/ops/platform.json"
           PLATFORM_DATA_ROOT="$RUNNER_TEMP/platform-data" npm run tool -- new \
-            --name ci-check-tool --owner ci@example.com --dir "$TOOL_DIR"
+            --name ci-check-tool --owner ci@example.com --dir "$RUNNER_TEMP/ci-check-tool"
+      - name: The workflow every tool receives is valid
+        working-directory: ${{ runner.temp }}/ci-check-tool
+        run: docker run --rm --volume "$PWD:/repo" --workdir /repo rhysd/actionlint:1.7.7 -color .github/workflows/platform.yml
       - id: checks
         name: Central checks
         uses: ./actions/checks
