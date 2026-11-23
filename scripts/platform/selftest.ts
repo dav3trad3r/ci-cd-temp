@@ -15,11 +15,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Baseline } from "./baseline.js";
 import { loadRegistry, PLATFORM_ROOT, registrySchema } from "./model.js";
 import { gitleaksBin } from "./secrets.js";
 import { applyFix } from "../sre/apply-fix.js";
+import { dockerAvailable } from "./sandbox.js";
 import type { FixProposal } from "../sre/fix.js";
 
 // The self-test pushes only to a local folder, and must never reach a real repository.
@@ -242,6 +243,16 @@ async function main() {
     files: [{ path, content }],
   });
 
+  if (!dockerAvailable()) {
+    // CI always has Docker. Without it a fix is refused, so there's nothing further to prove here.
+    expectThat("Docker is available in CI", !process.env.CI);
+    console.log("- Skipped the sandbox checks: Docker isn't installed on this machine.");
+    rmSync(work, { recursive: true, force: true });
+    console.log(failures ? `\n${failures} checks failed.` : "\nEvery self-test passed.");
+    if (failures) process.exit(1);
+    return;
+  }
+
   const good = await applyFix(
     proposal(
       "Answer with a status",
@@ -268,22 +279,62 @@ async function main() {
     bad.problems.join("\n"),
   );
 
-  // Code the agent writes runs in the checks, so it must not be able to read a credential.
-  const dump = join(work, "env-dump.json");
+  // Code the agent writes runs in the checks, so it tries everything a real attempt would. It
+  // reports what it could reach through the check's output, the only way out of the sandbox.
+  const azureCache = join(work, "fake-azure", "msal_token_cache.json");
+  mkdirSync(dirname(azureCache), { recursive: true });
+  writeFileSync(azureCache, "selftest-sentinel");
   process.env.ANTHROPIC_API_KEY = "selftest-sentinel";
-  await applyFix(
-    proposal(
-      "Try to read the credentials",
-      "lint.cjs",
-      `require("fs").writeFileSync(${JSON.stringify(dump)}, JSON.stringify(process.env));\nconsole.log("✖ 2 problems");\nprocess.exit(1);\n`,
-    ),
+  const probe = `
+const fs = require("fs");
+const read = (p) => { try { return fs.readFileSync(p, "utf8"); } catch { return ""; } };
+const parents = [1, process.ppid].map((p) => read("/proc/" + p + "/environ")).join("");
+require("dns").lookup("github.com", (error) => {
+  console.log("EVIDENCE" + JSON.stringify({
+    env: JSON.stringify(process.env).includes("selftest-sentinel"),
+    parent: parents.includes("selftest-sentinel"),
+    azure: fs.existsSync(${JSON.stringify(azureCache)}),
+    git: fs.existsSync(".git"),
+    network: !error,
+  }));
+  console.log("✖ 9 problems");
+  process.exit(1);
+});
+`;
+  const probed = await applyFix(
+    proposal("Try to reach the credentials", "lint.cjs", probe),
     context,
   );
   delete process.env.ANTHROPIC_API_KEY;
-  expectThat("the agent's code ran during the check", existsSync(dump));
+  const evidence = probed.problems.join("\n").match(/EVIDENCE(\{.*\})/)?.[1];
+  const reached = evidence ? (JSON.parse(evidence) as Record<string, boolean>) : undefined;
+  expectThat("the agent's code ran during the check", !!reached, probed.problems.join("\n"));
+  expectThat("it can't see the pipeline's credentials", reached?.env === false);
+  expectThat("or read them from its parent process", reached?.parent === false);
+  expectThat("or reach the Azure login cache", reached?.azure === false);
+  expectThat("or touch the git directory", reached?.git === false);
+  expectThat("or use the network", reached?.network === false);
+
+  // A check that edits its files can't change what gets pushed.
+  const tamper = await applyFix(
+    proposal(
+      "Change the files during the check",
+      "lint.cjs",
+      'require("fs").writeFileSync("injected.txt", "x");\nconsole.log("✖ 2 problems");\nprocess.exit(1);\n',
+    ),
+    context,
+  );
   expectThat(
-    "and it couldn't see the pipeline's credentials",
-    existsSync(dump) && !readFileSync(dump, "utf8").includes("selftest-sentinel"),
+    "a fix that edits files during its check still runs",
+    tamper.ok,
+    tamper.problems.join("\n"),
+  );
+  expectThat(
+    "and only the commit that was checked is pushed",
+    !!tamper.branch &&
+      !git(["ls-tree", "-r", "--name-only", `refs/heads/${tamper.branch}`], target).includes(
+        "injected.txt",
+      ),
   );
 
   rmSync(work, { recursive: true, force: true });
