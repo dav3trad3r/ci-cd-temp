@@ -2,7 +2,7 @@
 // and later deleted is still in the history, and it moves with the repository. Reports where a
 // secret is and what kind it is, and never the secret itself.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -48,12 +48,16 @@ export function gitleaksBin(): string | undefined {
 export function scanHistory(dir: string, bin: string, ignoreFile?: string): Leak[] {
   const work = mkdtempSync(join(tmpdir(), "platform-gitleaks-"));
   const report = join(work, "report.json");
+  // Gitleaks would otherwise obey a .gitleaks.toml in the repository being scanned.
+  const rules = join(work, "rules.toml");
   try {
+    writeFileSync(rules, "[extend]\nuseDefault = true\n");
     execFileSync(
       bin,
       [
         "git",
         dir,
+        `--config=${rules}`,
         "--log-opts=--all",
         "--report-format=json",
         `--report-path=${report}`,
