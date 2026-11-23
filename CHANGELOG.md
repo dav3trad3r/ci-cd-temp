@@ -6,6 +6,10 @@ Each release is a version tools can adopt. Merging a version change to `main` pu
 - **Minor** (1.x.0): a new or stricter check. Say what a tool may need to change.
 - **Major** (x.0.0): a change tools must act on. Say how to move.
 
+## 1.0.1
+
+- Generated Dockerfiles and Azure parameters now escape every value correctly, including backslashes and Bicep's `${`.
+
 ## 1.0.0
 
 - Two ways onto the platform: `npm run tool -- new` and `npm run tool -- migrate`.

@@ -104,11 +104,26 @@ export function dockerfileFor(manifest: Manifest): string | undefined {
     PRUNE: prune[pm] ?? "",
     PORT: String(manifest.port),
     USER: pm === "bun" ? "bun" : "node",
-    START: (manifest.start ?? "").replace(/"/g, '\\"'),
+    // Docker's exec form is a JSON array, so JSON writes it correctly whatever the command holds.
+    CMD: JSON.stringify(["sh", "-c", manifest.start ?? ""]),
     WEB_DIR: manifest.webDir ?? "",
   };
   const text = fill(source(manifest.start ? "Dockerfile.node" : "Dockerfile.static"), values);
   return `${text.replace(/\n{3,}/g, "\n\n").replace(/\n+FROM/g, "\n\nFROM")}`;
+}
+
+const BICEP_ESCAPES: Record<string, string> = {
+  "\\": "\\\\",
+  "'": "\\'",
+  "${": "\\${",
+  "\n": "\\n",
+  "\r": "\\r",
+  "\t": "\\t",
+};
+
+/** A Bicep string holding exactly this text. `${` would otherwise be read as code. */
+function bicepString(value: string): string {
+  return `'${value.replace(/[\\'\n\r\t]|\$\{/g, (match) => BICEP_ESCAPES[match] ?? match)}'`;
 }
 
 export function bicepParamFile(
@@ -116,7 +131,7 @@ export function bicepParamFile(
   manifest: Manifest,
   settings: Settings,
 ): string {
-  const quote = (value: string) => `'${value.replace(/'/g, "\\'")}'`;
+  const quote = bicepString;
   const secrets =
     manifest.kind === "new"
       ? [

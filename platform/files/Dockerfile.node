@@ -14,4 +14,4 @@ ENV PORT=__PORT__
 __SETUP__COPY --from=build --chown=__USER__:__USER__ /app ./
 USER __USER__
 EXPOSE __PORT__
-CMD ["sh", "-c", "__START__"]
+CMD __CMD__
