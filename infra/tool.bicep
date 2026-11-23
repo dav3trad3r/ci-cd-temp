@@ -201,7 +201,8 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = {
     environmentId: environmentId
     workloadProfileName: workloadProfileName
     configuration: {
-      activeRevisionsMode: 'Single'
+      // Multiple, so a new release can be tested with no traffic before it goes live.
+      activeRevisionsMode: 'Multiple'
       ingress: {
         external: true
         targetPort: targetPort

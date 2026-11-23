@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { applyFix } from "./apply-fix.js";
 import { anthropicClient, errorLine, git, loadConfig, loadLock, type SreTool } from "./config.js";
 import { validateProposal } from "./fix.js";
+import { checkoutTool, gitAuthEnv } from "./target.js";
 import { azureRead, clock, demoRead, type DemoIncident } from "./tools.js";
 
 const args = process.argv.slice(2);
@@ -42,7 +43,7 @@ const incident: DemoIncident | undefined = demo
   : undefined;
 const toolName = incident?.tool ?? flag("--tool");
 const tool: SreTool | undefined = config.tools.find((t) => t.name === toolName);
-if (!tool) throw new Error(`No tool named "${toolName}" in ops/sre-agent.json.`);
+if (!tool) throw new Error(`No tool named "${toolName}" in ops/tools/ or ops/sre-agent.json.`);
 const alertId = flag("--alert") ?? "";
 if (!demo && !alertId) throw new Error("Give the alert: --alert <alert id or name>.");
 
@@ -64,10 +65,11 @@ const log = (line: string) => {
 
 // ── The code the agent works on: a snapshot of the deployed branch ──────────────
 
-git(["fetch", "--quiet", "origin", baseBranch]);
+const checkout = checkoutTool(tool);
+git(["fetch", "--quiet", "origin", baseBranch], checkout.dir, gitAuthEnv());
 const tarDir = mkdtempSync(join(tmpdir(), "sre-snapshot-"));
 const tarPath = join(tarDir, "repo.tar.gz");
-git(["archive", "--format=tar.gz", "-o", tarPath, `origin/${baseBranch}`]);
+git(["archive", "--format=tar.gz", "-o", tarPath, `origin/${baseBranch}`], checkout.dir);
 const uploaded = await client.files.upload({
   file: await toFile(createReadStream(tarPath), "repo.tar.gz", { type: "application/gzip" }),
 });
@@ -173,6 +175,7 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
     );
     const result = await applyFix(proposal, {
       repo: tool!.repo,
+      repoDir: checkout.dir,
       baseBranch,
       incidentId,
       tool: tool!.name,
@@ -326,6 +329,7 @@ while (!finished) {
 }
 
 await client.files.delete(uploaded.id).catch(() => undefined);
+checkout.cleanup();
 
 // ── What happened ───────────────────────────────────────────────────────────────
 

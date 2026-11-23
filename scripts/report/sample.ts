@@ -2,10 +2,36 @@
 // before Azure, Foundry or Teams are connected. Every value here is made up.
 import { emptyFacts, type Facts, type ReportConfig } from "./model.js";
 
-export function sampleFacts(config: ReportConfig, now = new Date()): Facts {
+const EXAMPLE_TOOLS: ReportConfig["tools"] = [
+  {
+    name: "leasing-assistant",
+    owner: "jane.citizen@example.com",
+    resourceGroup: "rg-leasing-assistant",
+    parameters: "infra/tools/example.bicepparam",
+    dailyBudget: 5,
+    kind: "new",
+  },
+  {
+    name: "inspection-notes",
+    owner: "sam.citizen@example.com",
+    resourceGroup: "rg-inspection-notes",
+    parameters: "infra/tools/example.bicepparam",
+    dailyBudget: 3,
+    kind: "migrated",
+  },
+];
+
+export function sampleFacts(input: ReportConfig, now = new Date()): Facts {
+  const config = input.tools.length ? input : { ...input, tools: EXAMPLE_TOOLS };
   const facts = emptyFacts(config, now);
   const tool = config.tools[0]?.name ?? "leasing-assistant";
   facts.title = `${config.title} (example data)`;
+  facts.adoption = config.tools.map((t, i) => ({
+    tool: t.name,
+    kind: t.kind ?? "new",
+    serious: i === 1 ? 1 : 0,
+    known: i === 1 ? 3 : 0,
+  }));
   facts.drift = [
     {
       tool,

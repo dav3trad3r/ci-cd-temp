@@ -1,0 +1,27 @@
+name: Platform guardrails
+description: Fails a pull request that weakens the checks instead of fixing the code.
+inputs:
+  path:
+    description: The tool's folder, if it isn't the repository root
+    default: "."
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: "22"
+    - id: platform
+      shell: bash
+      run: |
+        root="$(cd "$GITHUB_ACTION_PATH/../.." && pwd)"
+        npm ci --prefix "$root" --no-audit --no-fund --ignore-scripts
+        echo "root=$root" >> "$GITHUB_OUTPUT"
+    - name: No checks weakened
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      env:
+        PLATFORM_ROOT_DIR: ${{ steps.platform.outputs.root }}
+      run: |
+        node "$PLATFORM_ROOT_DIR/node_modules/tsx/dist/cli.mjs" \
+          --tsconfig "$PLATFORM_ROOT_DIR/tsconfig.json" \
+          "$PLATFORM_ROOT_DIR/scripts/check-guardrails.ts"

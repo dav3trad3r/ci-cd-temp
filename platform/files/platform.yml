@@ -1,0 +1,232 @@
+# Managed by the platform (__ORG__/__PLATFORM_REPO__). Don't edit this file in the tool.
+# Improvements arrive as a Dependabot pull request that moves the version below.
+#
+# Pull request: checks and guardrails. Merge to main: build once, deploy to a staging revision and
+# test it. A Pipeline approver then releases it: Actions > Platform > Run workflow > promote. With
+# GitHub Enterprise, set PRODUCTION_GATE to "environment" to approve in the run instead. Deploy
+# jobs stay off until the AZURE_CLIENT_ID variable is set.
+
+name: Platform
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [__BASE_BRANCH__]
+  schedule:
+    - cron: "0 17 * * *" # 3 am Brisbane time: catches newly published vulnerabilities
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do
+        type: choice
+        options: [deploy, promote, rollback]
+        default: deploy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      ready: ${{ steps.checks.outputs.ready }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the secret scan reads the whole history
+          persist-credentials: false
+      - id: checks
+        uses: __ORG__/__PLATFORM_REPO__/actions/checks@v__VERSION__
+
+  guardrails:
+    name: Guardrails
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # needs the base branch to compare with
+          persist-credentials: false
+      - uses: __ORG__/__PLATFORM_REPO__/actions/guardrails@v__VERSION__
+
+  # Needs GitHub Advanced Security on private repositories. Set the ADVANCED_SECURITY variable to
+  # "true" once it's licensed. Until then the Checks job still audits dependencies and scans for
+  # secrets.
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request' && vars.ADVANCED_SECURITY == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+
+  # codeql:start
+  code-scanning:
+    name: Code scanning
+    if: vars.ADVANCED_SECURITY == 'true' && github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+
+  # codeql:end
+  build:
+    name: Build image
+    needs: checks
+    if: >-
+      vars.AZURE_CLIENT_ID != '' &&
+      needs.checks.outputs.ready == 'true' &&
+      github.ref_name == '__BASE_BRANCH__' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && inputs.action == 'deploy'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # sign in to Azure with OIDC: no stored credentials
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - id: image
+        uses: __ORG__/__PLATFORM_REPO__/actions/deploy@v__VERSION__
+        with:
+          mode: image
+          registry: ${{ vars.AZURE_REGISTRY || '__REGISTRY__' }}
+
+  staging:
+    name: Staging
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      revision: ${{ steps.deploy.outputs.revision }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - id: deploy
+        uses: __ORG__/__PLATFORM_REPO__/actions/deploy@v__VERSION__
+        with:
+          mode: staging
+          image: ${{ needs.build.outputs.image }}
+
+  # With GitHub Enterprise: waits here for the required reviewers on the production environment.
+  production:
+    name: Production
+    needs: staging
+    if: vars.PRODUCTION_GATE == 'environment'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      actions: read # to confirm the environment really has required reviewers
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - uses: __ORG__/__PLATFORM_REPO__/actions/deploy@v__VERSION__
+        with:
+          mode: promote
+          revision: ${{ needs.staging.outputs.revision }}
+          gate: ${{ vars.PRODUCTION_GATE }}
+
+  # On any GitHub plan: a Pipeline approver runs this by hand, and it checks that they are one.
+  promote:
+    name: Promote to production
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.action == 'promote' &&
+      github.ref_name == '__BASE_BRANCH__'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - uses: __ORG__/__PLATFORM_REPO__/actions/deploy@v__VERSION__
+        with:
+          mode: promote
+
+  rollback:
+    name: Roll back
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.action == 'rollback' &&
+      github.ref_name == '__BASE_BRANCH__'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - uses: __ORG__/__PLATFORM_REPO__/actions/deploy@v__VERSION__
+        with:
+          mode: rollback
+          gate: ${{ vars.PRODUCTION_GATE }}

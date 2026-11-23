@@ -1,9 +1,11 @@
 // Applies a validated fix proposal and opens a draft pull request. Nothing here trusts the
 // agent: the change is made in a throwaway git worktree, checked with the repository's own
-// Guardrails rules, then lint, types and tests run on it. Only a change that passes everything
-// is pushed, on an sre-agent/ branch, as a draft for a person to review.
+// Guardrails rules, then the tool's own lint, types and tests run on it, against its baseline and
+// without the pipeline's credentials. Only a change that passes everything is pushed, on an
+// sre-agent/ branch, as a draft for a person to review.
 import { execFile } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   rmdirSync,
@@ -16,13 +18,20 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { findWeakenedChecks, parseAddedLines, parseNameStatus } from "../guardrails.js";
+import { CHECK_LABELS, evaluate } from "../platform/baseline.js";
+import { safeEnv } from "../platform/env.js";
+import { hasManifest, loadManifest, type Manifest } from "../platform/model.js";
+import { collectResults, loadBaseline } from "../platform/run-checks.js";
 import { errorLine, git, tryGit } from "./config.js";
 import { branchName, guardrailProblems, prBody, type FixProposal } from "./fix.js";
+import { gitAuthEnv, githubToken } from "./target.js";
 
 const run = promisify(execFile);
 
 export interface FixContext {
   repo: string;
+  /** The checkout of that repository. */
+  repoDir: string;
   baseBranch: string;
   incidentId: string;
   tool: string;
@@ -42,24 +51,32 @@ export interface FixResult {
   prDraftFile?: string;
 }
 
-async function npm(script: string, cwd: string): Promise<{ ok: boolean; tail: string }> {
-  try {
-    await run("npm", ["run", script, "--silent"], {
-      cwd,
-      maxBuffer: 64 * 1024 * 1024,
-      timeout: 5 * 60_000,
-      shell: process.platform === "win32",
-    });
-    return { ok: true, tail: "" };
-  } catch (error) {
-    const out = `${(error as { stdout?: string }).stdout ?? ""}\n${(error as { stderr?: string }).stderr ?? ""}`;
-    return { ok: false, tail: out.trim().split("\n").slice(-25).join("\n") };
-  }
-}
+/** For the platform repository itself, which has no .platform/tool.json. */
+const OWN_CHECKS: Manifest = {
+  name: "platform",
+  kind: "new",
+  owner: "platform@example.com",
+  stack: "node",
+  nodeVersion: "22",
+  packageManager: "npm",
+  commands: {
+    install: "npm ci --no-audit --no-fund",
+    format: null,
+    lint: "npm run lint --silent",
+    typecheck: "npm run typecheck --silent",
+    test: "npm test --silent",
+    build: null,
+    smoke: null,
+    eval: null,
+  },
+  webDir: null,
+  start: null,
+  port: 8080,
+  healthPath: "/",
+  dockerfile: null,
+};
 
-function token(): string | undefined {
-  return process.env.SRE_AGENT_GITHUB_TOKEN || process.env.GITHUB_TOKEN || undefined;
-}
+const token = githubToken;
 
 async function openPullRequest(
   ctx: FixContext,
@@ -93,14 +110,17 @@ async function openPullRequest(
 export async function applyFix(proposal: FixProposal, ctx: FixContext): Promise<FixResult> {
   const checks: string[] = [];
   const base = `origin/${ctx.baseBranch}`;
-  git(["fetch", "--quiet", "origin", ctx.baseBranch]);
+  git(["fetch", "--quiet", "origin", ctx.baseBranch], ctx.repoDir, gitAuthEnv());
   const work = mkdtempSync(join(tmpdir(), "sre-fix-"));
   const identity = ["-c", `user.name=${ctx.author.name}`, "-c", `user.email=${ctx.author.email}`];
 
   try {
-    git(["worktree", "add", "--detach", "--quiet", work, base]);
-    // Proposals can't change dependencies, so the main checkout's node_modules fits the worktree.
-    symlinkSync(resolve("node_modules"), join(work, "node_modules"), "junction");
+    git(["worktree", "add", "--detach", "--quiet", work, base], ctx.repoDir);
+    // Proposals can't change dependencies, so an installed checkout's node_modules fits the
+    // worktree. A freshly cloned tool installs its own below.
+    const installed = resolve(ctx.repoDir, "node_modules");
+    const hasModules = existsSync(installed);
+    if (hasModules) symlinkSync(installed, join(work, "node_modules"), "junction");
 
     if (proposal.kind === "revert") {
       try {
@@ -122,8 +142,9 @@ export async function applyFix(proposal: FixProposal, ctx: FixContext): Promise<
       }
       // House style, so the format check passes: the agent's files go through Prettier.
       const paths = (proposal.files ?? []).map((f) => f.path);
-      await run("npx", ["prettier", "--write", "--log-level", "warn", ...paths], {
+      await run("npx", ["--no-install", "prettier", "--write", "--log-level", "warn", ...paths], {
         cwd: work,
+        env: safeEnv(),
         shell: process.platform === "win32",
       }).catch(() => undefined);
       git(["add", "-A"], work);
@@ -164,16 +185,28 @@ export async function applyFix(proposal: FixProposal, ctx: FixContext): Promise<
     if (findings.length) return { ok: false, checks, problems: guardrailProblems(findings) };
     checks.push("Guardrails rules: no check weakened");
 
-    for (const script of ["lint", "typecheck", "test"]) {
-      const result = await npm(script, work);
-      if (!result.ok) {
+    // The tool's own commands, compared with its baseline: a fix can't add a new problem.
+    const manifest = hasManifest(work) ? loadManifest(work) : OWN_CHECKS;
+    const baseline = loadBaseline(work);
+    const raw = await collectResults({
+      dir: work,
+      manifest,
+      only: ["lint", "typecheck", "test"],
+      installed: hasModules,
+    });
+    for (const result of raw) {
+      const verdict = evaluate(result, baseline);
+      if (verdict.status === "fail") {
+        const tail = result.output.trim().split("\n").slice(-25).join("\n");
         return {
           ok: false,
           checks,
-          problems: [`npm run ${script} failed on the fix:\n${result.tail}`],
+          problems: [`${CHECK_LABELS[result.name]} failed on the fix: ${verdict.detail}\n${tail}`],
         };
       }
-      checks.push(`npm run ${script}: passed`);
+      if (verdict.status === "pass" || verdict.status === "known") {
+        checks.push(`${CHECK_LABELS[result.name]}: ${verdict.detail}`);
+      }
     }
 
     const branch = branchName(ctx.incidentId, proposal.title);
@@ -237,7 +270,7 @@ export async function applyFix(proposal: FixProposal, ctx: FixContext): Promise<
         // no link was made
       }
     }
-    tryGit(["worktree", "remove", "--force", work]);
+    tryGit(["worktree", "remove", "--force", work], ctx.repoDir);
     rmSync(work, { recursive: true, force: true });
   }
 }

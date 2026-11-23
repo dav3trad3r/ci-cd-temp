@@ -8,7 +8,7 @@
       "name": "demo-tool",
       "owner": "jane.citizen@example.com",
       "githubReviewer": "",
-      "repo": "dav3trad3r/ci-cd-temp",
+      "repo": "",
       "baseBranch": "main",
       "resourceGroup": "rg-demo-tool",
       "containerApp": "demo-tool",

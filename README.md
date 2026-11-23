@@ -1,26 +1,111 @@
-# CI/CD template (ci-cd-temp)
+# CI/CD platform template (ci-cd-temp)
 
 A starter repo for internal tools built with AI coding assistants (Claude Code, GitHub Copilot, Copilot Studio and the like). CI, security scanning and regression checks are switched on from the first commit, so a new tool starts safe without its builder having to set any of it up.
 
-AI assistants build working apps quickly, but they rarely add pipelines, access checks or scanning unless asked. This template makes the safe way the default: click **Use this template**, build your tool, and every pull request is checked before it can reach production.
+AI assistants build working apps quickly, but they rarely add pipelines, access checks or scanning unless asked. This platform makes the safe way the default. Every tool, whether it's newly built or moved from someone's private repository, gets the same checks, deploy pipeline, incident response and reporting.
 
 ## Status
 
 A working prototype and a foundation to adapt, not a finished platform. This is what runs today:
 
-| Part                                       | Status             | Where it stands                                                                                                                                                                                                                  |
-| ------------------------------------------ | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CI, security and regression checks         | **Working**        | Run on every pull request                                                                                                                                                                                                        |
-| Agent rules and permissions                | **Working**        | `AGENTS.md` and `.claude/settings.json`                                                                                                                                                                                          |
-| Guardrails check                           | **Working**        | Runs on every pull request and flags a weakened check. It becomes required to merge once the review rules are applied                                                                                                            |
-| Nightly AI evaluation and dependency audit | **Working**        | The evaluation uses a keyword stand-in until a real model is connected                                                                                                                                                           |
-| Azure templates                            | **Partly proved**  | Lint and compile on every pull request. The tool template has been deployed to a sandbox; the platform template has only been previewed with what-if                                                                             |
-| Dependabot                                 | **Partly working** | Action updates work. npm updates failed on their first runs and need fixing                                                                                                                                                      |
-| Afternoon report                           | **Not connected**  | Its Azure checks have run read-only against a sandbox. The schedule is off, and the Teams post and AI write-up haven't run                                                                                                       |
-| SRE agent                                  | **Not connected**  | Ran end to end on a scripted incident with a planted bug ([draft PR #12](https://github.com/dav3trad3r/ci-cd-temp/pull/12)). Its Azure tools, the alert trigger and opening pull requests directly from the workflow haven't run |
-| Review and merge rules                     | **Not applied**    | Dry-run tested. They need a GitHub organisation with a Pipeline approvers team                                                                                                                                                   |
-| Deploy pipeline                            | **Next**           | Not built: build once, deploy to staging, verify, promote, roll back                                                                                                                                                             |
-| Feature map and live verification          | **Next**           | Not built: a map of each tool's features, checked against the deployed tool                                                                                                                                                      |
+| Part                                       | Status             | Where it stands                                                                                                                                                                                                                                             |
+| ------------------------------------------ | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New tools                                  | **Working**        | `npm run tool -- new` creates a tool that passes every check. Proved from scratch on every change to the platform                                                                                                                                           |
+| Migrated tools                             | **Partly proved**  | `npm run tool -- migrate` ran on copies of two real repositories and a messy test tool. Not yet moved into a real GitHub organisation                                                                                                                       |
+| CI, security and regression checks         | **Working**        | Run on every pull request                                                                                                                                                                                                                                   |
+| Agent rules and permissions                | **Working**        | `AGENTS.md` and `.claude/settings.json`                                                                                                                                                                                                                     |
+| Guardrails check                           | **Working**        | Runs on every pull request and flags a weakened check. It becomes required to merge once the review rules are applied                                                                                                                                       |
+| Nightly AI evaluation and dependency audit | **Working**        | The evaluation uses a keyword stand-in until a real model is connected                                                                                                                                                                                      |
+| Azure templates                            | **Partly proved**  | Lint and compile on every pull request. The tool template has been deployed to a sandbox; the platform template has only been previewed with what-if                                                                                                        |
+| Dependabot                                 | **Partly working** | Action updates work. npm updates failed on their first runs and need fixing                                                                                                                                                                                 |
+| Afternoon report                           | **Not connected**  | Covers every registered tool. Its Azure checks have run read-only against a sandbox. The schedule is off, and the Teams post and AI write-up haven't run                                                                                                    |
+| SRE agent                                  | **Not connected**  | Covers every registered tool. Ran end to end on a scripted incident with a planted bug ([draft PR #12](https://github.com/dav3trad3r/ci-cd-temp/pull/12)), and its fix path is tested on a migrated tool. Its Azure tools and the alert trigger haven't run |
+| Review and merge rules                     | **Not applied**    | Dry-run tested. They need a GitHub organisation with a Pipeline approvers team                                                                                                                                                                              |
+| Deploy pipeline                            | **Partly proved**  | Staging, promote, rollback and a blocked bad release ran on a real Azure sandbox. The whole pipeline hasn't yet run from a tool's own repository                                                                                                            |
+| Feature map and live verification          | **Next**           | Not built: a map of each tool's features, checked against the deployed tool                                                                                                                                                                                 |
+
+## Two ways onto the platform
+
+Every tool ends up the same: a private repository in your organisation with the checks, deploy pipeline, code owners and agent rules, registered so the SRE agent and the afternoon report cover it.
+
+|                           | New AI tool                   | Tool moving from a private repository      |
+| ------------------------- | ----------------------------- | ------------------------------------------ |
+| **Start**                 | `npm run tool -- new`         | `npm run tool -- migrate`                  |
+| **Code**                  | A working starter app         | Its own code, unchanged                    |
+| **First checks**          | Everything must pass          | Old problems go on a baseline to work down |
+| **Secrets**               | Scanned on every pull request | Full history scanned before anything moves |
+| **CI/CD, SRE, reporting** | Included                      | Included                                   |
+
+### A new tool
+
+```bash
+npm run tool -- new --name leasing-assistant --owner jane@example.com --data Confidential --budget 5
+```
+
+This creates the tool in a sibling folder, ready to push to a new private repository, and adds it to the register in `ops/tools/`.
+
+### A tool in someone's private repository
+
+```bash
+npm run tool -- migrate --source https://github.com/jane/leasing-tool.git \
+  --name leasing-assistant --owner jane@example.com --data Confidential --budget 5
+```
+
+Without `--go` this is a dry run that changes nothing outside a local copy. It:
+
+1. **Copies** every branch and tag. The original isn't touched.
+2. **Scans the whole history for secrets** with [Gitleaks](https://github.com/gitleaks/gitleaks). If it finds any, it stops and lists where they are, never the keys themselves. Replace each key at its provider, then run it again with `--rotated <the list>`.
+3. **Works out how the tool builds** (npm, pnpm, yarn or bun, and Next.js, Vite and others).
+4. **Adds the platform's files** on a `platform/adopt` branch, without touching application code.
+5. **Records a baseline** of what already fails.
+
+Add `--go` (with `GITHUB_ADMIN_TOKEN`) to create the private repository, move everything and open the pull request. Once that's merged, archive the original so there's only one copy to work in.
+
+### The baseline
+
+| Finding                                                                    | Pull request                            | Deployment              |
+| -------------------------------------------------------------------------- | --------------------------------------- | ----------------------- |
+| Old lint, type, test or format problems                                    | Allowed, and the count can only go down | Allowed                 |
+| A check the tool doesn't have yet                                          | Shown as a to-do                        | Allowed                 |
+| **Any new problem**                                                        | **Fails**                               | Blocked                 |
+| **Secrets in the browser, or a Supabase table without row-level security** | Allowed, so it can be fixed             | **Blocked until fixed** |
+| **A secret in the git history**                                            | **Fails**                               | Blocked                 |
+
+Lowering the baseline needs no approval. Raising it trips Guardrails and needs a person.
+
+### How improvements reach every tool
+
+Tools don't copy the checks. Each one calls the central actions in `actions/` at a pinned version.
+
+1. Improve the platform in a pull request. The self-test proves both new and migrated tools still work.
+2. Raise the version in `package.json` and add a line to `CHANGELOG.md`. Merging publishes the release.
+3. Each tool's Dependabot opens a pull request for the new version, and a Pipeline approver reviews it.
+
+If a release changes the tool's own workflow file, run `npm run tool -- update --path ../<tool>` and open a pull request.
+
+### Set it up for your organisation
+
+1. Put this repository in your organisation, then run `npm run tool -- setup --org your-org` and fill in the Azure values in `ops/platform.json`.
+2. **This repository → Settings → Actions → General → Access:** choose "Accessible from repositories in the organization", so private tools can call the central actions.
+3. Create the `pipeline-approvers` team with at least two people, and give it the **Maintain** role on each tool. Everyone else gets **Write** at most, because Maintain is what lets someone release to production.
+4. Apply the review rules to every repository: `npm run rulesets:apply -- --org your-org`.
+5. **Organisation variables:** `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` and `AZURE_REGISTRY`.
+6. **On each tool:** create `staging` and `production` environments, each limited to the `main` branch, and a federated credential for each.
+
+**GitHub plan:** rulesets on private repositories need GitHub Team or Enterprise. CodeQL and dependency review need Advanced Security: set `ADVANCED_SECURITY` to `true` once you have it. Until then, every tool still gets the Gitleaks scan and a dependency audit.
+
+### Connect a tool to Azure
+
+Each tool has a parameters file in `infra/tools/`. Fill in its sign-in client ID and secrets, build its first image, then create its resources once:
+
+```bash
+az group create --name rg-<tool> --location australiaeast
+az deployment group create --resource-group rg-<tool> --parameters infra/tools/<tool>.bicepparam --parameters image=<registry>.azurecr.io/<tool>:<commit>
+```
+
+From then on, merging to `main` builds the image once and starts it as a **staging revision** with no production traffic. If it's unhealthy, it's switched off and production never changes. A Pipeline approver then releases it from **Actions → Platform → Run workflow → promote**, and the step confirms they hold the Maintain role. The previous revision keeps running, so **rollback** in the same menu takes seconds.
+
+With GitHub Enterprise you can approve inside the run instead: add required reviewers to the `production` environment and set the `PRODUCTION_GATE` variable to `environment`. The release stops if those reviewers aren't really configured.
 
 ## What runs, and when
 
@@ -131,7 +216,7 @@ Anything that needs a person comes first: drift, hand-made resources, a tool ove
    - For the agent, either **Key Vault Secrets User** on the vault holding the Foundry key, or (with `"auth": "entra"`, no key at all) a role that can call the Foundry resource's models, such as **Azure AI User**.
 2. **Repository variables:** `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` and `ANTHROPIC_FOUNDRY_RESOURCE` (the Foundry resource name). The workflow does nothing until `AZURE_CLIENT_ID` is set.
 3. **Repository secrets:** `TEAMS_WEBHOOK_URL`, from a Teams channel's Workflows ("Post to a channel when a webhook request is received"). Optional: `ANTHROPIC_FOUNDRY_API_KEY` if the key isn't in Key Vault, and `REPORT_GITHUB_TOKEN`, a read-only token, to report on every repository in the organisation.
-4. **`ops/daily-report.json`:** one entry per tool (name, owner, resource group, parameters file, daily budget), the shared groups to watch, the Claude model or deployment name in Foundry, the Key Vault holding its key, and the GitHub search (for example `org:your-org`).
+4. **`ops/daily-report.json`:** the shared groups to watch, the Claude model or deployment name in Foundry and the Key Vault details. Tools come from the register in `ops/tools/`, so a new or migrated tool is covered as soon as it's registered.
 5. **Run it:** Actions → Daily report → Run workflow. Locally, after `az login`: `npm run report -- --dry-run`.
 
 ## Use it
@@ -168,7 +253,7 @@ Once connected, when an alert fires on a tool, `.github/workflows/incident.yml` 
 
 1. **Secrets:** `ANTHROPIC_API_KEY`; `SRE_AGENT_GITHUB_TOKEN`, a fine-grained token (or GitHub App) with contents and pull requests write on the tools' repositories, without which the agent diagnoses only; and `TEAMS_WEBHOOK_URL`.
 2. **Azure:** the read-only identity from the afternoon report, plus **Monitoring Reader** and **Log Analytics Reader**. Repository variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` and `SRE_AGENT_ENABLED=true`.
-3. **`ops/sre-agent.json`:** one entry per tool (repository, base branch, resource group, container app, Log Analytics workspace ID, reviewer), the model, and the spend cap per incident (`budgetUsd`, enforced by Managed Agents).
+3. **`ops/sre-agent.json`:** the model and the spend cap per incident (`budgetUsd`). Tools come from the register in `ops/tools/`. Set each tool's Log Analytics workspace ID and reviewer in its register entry. The agent clones the tool's repository for the incident and tests any fix with that tool's own commands and baseline, with no pipeline credentials.
 4. **The alert:** in the action group, call a Logic App that posts to `https://api.github.com/repos/<owner>/<repo>/dispatches` with `{"event_type": "azure-alert", "client_payload": {"tool": "<tool>", "alert": "<alert id>"}}`.
 5. **Setup:** `npm run sre:setup` creates the agent, its sandbox, the runbook skill and both memory stores, and records their IDs in `ops/sre-agent.lock.json`. Commit that file so the workflow reuses them; the IDs are useless without the API key. Run setup again after changing the agent's files, and in a copy of this template, delete the file first so setup creates resources in your own account.
 
@@ -178,7 +263,7 @@ Managed Agents runs on Anthropic's platform. On Microsoft Foundry, the same tool
 
 Some protections are repository settings rather than files:
 
-1. **Settings → General:** tick **Template repository**, so people can start new tools from it.
+1. **Settings → Actions → General → Access:** let repositories in the organisation use this repository's actions.
 2. **Settings → Advanced Security:** turn on secret scanning and **push protection**, which blocks a commit that contains a key.
 3. **A Pipeline approvers team:** in the organisation, create a `pipeline-approvers` team with at least two people, so merging never depends on one person. Make it the reviewer for every pull request in `.github/CODEOWNERS` (`* @your-org/pipeline-approvers`).
 4. **The review and merge rules:** `.github/rulesets/` holds two rulesets for `main`. Check them with `npm run rulesets:apply -- --org your-org --dry-run`, then apply them with an organisation admin token in `GITHUB_ADMIN_TOKEN`: without `--repo` they cover every repository in the organisation, and `--repo <name>` applies them to one. If the organisation's plan doesn't offer organisation-wide rulesets, apply them per repository.
@@ -190,7 +275,7 @@ Some protections are repository settings rather than files:
 
 - **Sign-in:** replace the template's signed tokens with your organisation's identity provider, such as Microsoft Entra ID (`src/server/auth.ts` explains where).
 - **Secrets:** keep `APP_JWT_SECRET` and `DATABASE_URL` in your host's secret store (Azure Key Vault, Railway variables), never in the repo.
-- **Deploy:** connect your host to this repo, and only deploy commits where CI passed.
+- **Deploy:** use the deploy stage above, so only commits where the checks passed can reach production.
 
 ## Stack
 

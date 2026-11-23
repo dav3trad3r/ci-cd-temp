@@ -5,6 +5,7 @@
 // Flags: --sample (example data), --dry-run (don't post to Teams), --no-agent (plain report only),
 //        --post (with --sample: send the example to Teams, to test the webhook).
 import { appendFileSync, readFileSync } from "node:fs";
+import { loadRegistry } from "../platform/model.js";
 import { collect } from "./collect.js";
 import type { ReportConfig } from "./model.js";
 import { buildPrompt, renderPlain, stepSummary, teamsPayload } from "./render.js";
@@ -13,7 +14,25 @@ import { summarise } from "./summarise.js";
 
 const flags = new Set(process.argv.slice(2));
 const configPath = process.env.REPORT_CONFIG ?? "ops/daily-report.json";
-const config = JSON.parse(readFileSync(configPath, "utf8")) as ReportConfig;
+const fromFile = JSON.parse(readFileSync(configPath, "utf8")) as ReportConfig;
+// Every tool in the register is reported on, whether it was built new or migrated.
+const registered = loadRegistry().map((t) => ({
+  name: t.name,
+  owner: t.owner,
+  resourceGroup: t.resourceGroup,
+  parameters: t.parameters,
+  dailyBudget: t.dailyBudget,
+  kind: t.kind,
+  repo: t.repo,
+  baseBranch: t.baseBranch,
+}));
+const config: ReportConfig = {
+  ...fromFile,
+  tools: [
+    ...fromFile.tools.filter((t) => !registered.some((r) => r.name === t.name)),
+    ...registered,
+  ],
+};
 
 const facts = flags.has("--sample") ? sampleFacts(config) : await collect(config);
 const plain = renderPlain(facts);

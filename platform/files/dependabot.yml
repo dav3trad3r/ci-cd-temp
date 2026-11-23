@@ -1,0 +1,22 @@
+# Managed by the platform (__ORG__/__PLATFORM_REPO__).
+# A new platform release arrives here as one pull request for a Pipeline approver to review.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      platform:
+        patterns:
+          - "__ORG__/__PLATFORM_REPO__*"
+      actions:
+        patterns:
+          - "*"
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      dev-dependencies:
+        dependency-type: development

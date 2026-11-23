@@ -29,6 +29,13 @@ export function decisions(facts: Facts): string[] {
       }
     }
   }
+  for (const a of facts.adoption) {
+    if (a.serious > 0) {
+      out.push(
+        `${a.tool}: ${a.serious} serious ${a.serious === 1 ? "issue" : "issues"} (secrets in the browser or exposed data) must be fixed before it can deploy`,
+      );
+    }
+  }
   for (const a of facts.alerts) {
     if (a.state !== "Closed" && (a.severity === "Sev0" || a.severity === "Sev1")) {
       out.push(`${a.tool}: ${a.severity} alert still open (${a.name})`);
@@ -63,7 +70,13 @@ export function renderPlain(facts: Facts): string {
     parts.push(drift === 0 ? "no drift" : `${drift} drift ${drift === 1 ? "item" : "items"}`);
     const alerts = facts.alerts.filter((a) => a.tool === tool.name).length;
     parts.push(alerts === 0 ? "no alerts" : `${alerts} ${alerts === 1 ? "alert" : "alerts"}`);
-    lines.push(`- ${tool.name} (${tool.owner}): ${parts.join(" · ")}`);
+    const adoption = facts.adoption.find((a) => a.tool === tool.name);
+    if (adoption && adoption.known + adoption.serious > 0) {
+      const left = adoption.known + adoption.serious;
+      parts.push(`${left} known ${left === 1 ? "issue" : "issues"} to work down`);
+    }
+    const kind = tool.kind === "migrated" ? ", migrated" : "";
+    lines.push(`- ${tool.name} (${tool.owner}${kind}): ${parts.join(" · ")}`);
   }
   // Spend no tool owns: resources without a tool tag, or tagged for a tool not in the config.
   const unowned = (facts.cost?.rows ?? []).filter(

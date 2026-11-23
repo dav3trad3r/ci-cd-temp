@@ -1,0 +1,34 @@
+# Publishes a platform release when the version in package.json changes on main. Each tool's
+# Dependabot then proposes the new version as a pull request for a Pipeline approver.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [package.json]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Publish the version
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag it, once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          if git rev-parse --verify --quiet "refs/tags/$version" > /dev/null; then
+            echo "$version is already released."
+            exit 0
+          fi
+          gh release create "$version" --target "$GITHUB_SHA" --title "$version" --generate-notes

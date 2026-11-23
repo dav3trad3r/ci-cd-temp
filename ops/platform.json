@@ -1,0 +1,12 @@
+{
+  "org": "your-org",
+  "platformRepo": "ci-cd-temp",
+  "approversTeam": "pipeline-approvers",
+  "azure": {
+    "environmentId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-platform/providers/Microsoft.App/managedEnvironments/cae-tools",
+    "actionGroupId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-platform/providers/Microsoft.Insights/actionGroups/ag-tools-platform",
+    "registryName": "acrtoolsexample",
+    "registryResourceGroup": "rg-platform",
+    "costCentre": "PM-OPS"
+  }
+}
