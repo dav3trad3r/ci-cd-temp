@@ -1,0 +1,90 @@
+# Proves the platform still works for both kinds of tool, on every change to it: a new tool passes
+# everything, and a messy existing tool can migrate while a leaked key, a new problem or exposed
+# data is still caught. Also runs the central actions and builds a real image.
+
+name: Platform self-test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-selftest-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  selftest:
+    name: New and migrated tools
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Install Gitleaks (checksum verified)
+        run: bash actions/install-gitleaks.sh
+      - name: Both ways onto the platform
+        run: npm run tool:selftest
+
+  central-actions:
+    name: Central actions and image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TOOL_DIR: ${{ runner.temp }}/ci-check-tool
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Create a tool, as a person would
+        run: |
+          mkdir -p "$RUNNER_TEMP/platform-data/ops"
+          cp ops/platform.json "$RUNNER_TEMP/platform-data/ops/platform.json"
+          PLATFORM_DATA_ROOT="$RUNNER_TEMP/platform-data" npm run tool -- new \
+            --name ci-check-tool --owner ci@example.com --dir "$TOOL_DIR"
+      - id: checks
+        name: Central checks
+        uses: ./actions/checks
+        with:
+          path: ${{ runner.temp }}/ci-check-tool
+      - name: The tool is ready to deploy
+        env:
+          READY: ${{ steps.checks.outputs.ready }}
+        run: test "$READY" = "true"
+      - name: Central guardrails
+        uses: ./actions/guardrails
+        with:
+          path: ${{ runner.temp }}/ci-check-tool
+      - name: The release gate can read who is running a job
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          role="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_TRIGGERING_ACTOR/permission" --jq .role_name)"
+          echo "$GITHUB_TRIGGERING_ACTOR has the $role role"
+          test -n "$role"
+      - name: Build the image and start it
+        working-directory: ${{ runner.temp }}/ci-check-tool
+        run: |
+          docker build --file .platform/Dockerfile --tag ci-check-tool:test .
+          docker run --detach --name tool --publish 8080:8080 --env NODE_ENV=development ci-check-tool:test
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/healthz; then exit 0; fi
+            sleep 1
+          done
+          docker logs tool
+          exit 1

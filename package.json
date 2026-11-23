@@ -1,6 +1,6 @@
 {
   "name": "ci-cd-temp",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "A starter repo for internal tools built with AI coding assistants, with CI, security scanning and regression checks switched on from the first commit.",
   "license": "MIT",
@@ -21,6 +21,8 @@
     "smoke": "node scripts/smoke.mjs",
     "check:guardrails": "tsx scripts/check-guardrails.ts",
     "check:infra": "node scripts/check-infra.mjs",
+    "tool": "tsx scripts/platform/cli.ts",
+    "tool:selftest": "tsx scripts/platform/selftest.ts",
     "rulesets:apply": "tsx scripts/apply-rulesets.ts",
     "eval": "tsx evals/run.ts",
     "report": "tsx scripts/report/run.ts",

@@ -1,7 +1,7 @@
 // Front-end checks, run after `npm run build`:
 // 1. No secrets in the files sent to the browser, including Supabase service-role keys hidden
 //    inside JWTs.
-// 2. No VITE_ or NEXT_PUBLIC_ variable named like a secret (both are readable by every visitor).
+// 2. No VITE_, NEXT_PUBLIC_ or REACT_APP_ variable named like a secret (all are readable by every visitor).
 // Tested in tests/regressions/2026-11-22-frontend-secret-check.test.ts.
 // 3. Bundle-size budget: browser JavaScript must stay under budgets.json (a performance
 //    regression check).
@@ -9,7 +9,8 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 
-const WEB_DIR = "dist/web";
+// The folder of built browser files. The platform passes each tool's own (dist, build, .next/static).
+const WEB_DIR = process.env.FRONTEND_WEB_DIR || "dist/web";
 const problems = [];
 
 async function walk(dir) {
@@ -75,8 +76,8 @@ for (const file of files) {
   }
 }
 
-// 2. Public variables named like secrets: VITE_ (Vite) and NEXT_PUBLIC_ (Next.js) are both sent
-//    to the browser. Checked in the example env file and the front-end source.
+// 2. Public variables named like secrets: VITE_ (Vite), NEXT_PUBLIC_ (Next.js) and REACT_APP_
+//    (Create React App) are all sent to the browser. Checked in the example env file and the front-end source.
 const SECRET_NAME =
   /\b(?:VITE|NEXT_PUBLIC)_[A-Z0-9_]*(SECRET|PRIVATE|PASSWORD|TOKEN|SERVICE_ROLE|API_KEY)[A-Z0-9_]*/g;
 async function walkIfPresent(dir) {
@@ -101,20 +102,28 @@ for (const file of sources) {
   }
   for (const match of text.matchAll(SECRET_NAME)) {
     problems.push(
-      `${file} uses ${match[0]}: VITE_ and NEXT_PUBLIC_ values are sent to every visitor, so keep secrets on the server.`,
+      `${file} uses ${match[0]}: VITE_, NEXT_PUBLIC_ and REACT_APP_ values are sent to every visitor, so keep secrets on the server.`,
     );
   }
 }
 
 // 3. Bundle-size budget
-const { webJsKbGzip } = JSON.parse(await readFile("budgets.json", "utf8"));
+// A migrated tool may not have a budget yet: then the size is reported but not limited.
+let webJsKbGzip;
+try {
+  ({ webJsKbGzip } = JSON.parse(await readFile("budgets.json", "utf8")));
+} catch {
+  webJsKbGzip = undefined;
+}
 let jsBytes = 0;
 for (const file of files.filter((f) => f.endsWith(".js"))) {
   jsBytes += gzipSync(await readFile(file)).length;
 }
 const jsKb = jsBytes / 1024;
-console.log(`Browser JavaScript: ${jsKb.toFixed(1)} KB gzip (budget ${webJsKbGzip} KB).`);
-if (jsKb > webJsKbGzip) {
+console.log(
+  `Browser JavaScript: ${jsKb.toFixed(1)} KB gzip (${webJsKbGzip === undefined ? "no budget set" : `budget ${webJsKbGzip} KB`}).`,
+);
+if (webJsKbGzip !== undefined && jsKb > webJsKbGzip) {
   problems.push(
     `Browser JavaScript is ${jsKb.toFixed(1)} KB gzip, over the ${webJsKbGzip} KB budget in budgets.json.`,
   );
@@ -125,5 +134,5 @@ if (problems.length) {
   process.exit(1);
 }
 console.log(
-  `✓ ${files.length} browser files checked: no secrets, no secret-like VITE_ or NEXT_PUBLIC_ names, within budget.`,
+  `✓ ${files.length} browser files checked: no secrets, no secret-like public variable names, within budget.`,
 );

@@ -4,6 +4,7 @@
 // test, raising a budget or silencing the linter. These rules find those changes in a
 // pull request so a person has to approve them on purpose. The git plumbing lives in
 // check-guardrails.ts; this file is pure so it can be unit tested.
+import { baselineLoosened, type Baseline } from "./platform/baseline.js";
 
 export interface ChangedFile {
   /** git --name-status letter: A added, M modified, D deleted, R renamed, C copied. */
@@ -39,6 +40,12 @@ export const GUARDED_FILES = [
   ".github/workflows/",
   ".github/CODEOWNERS",
   ".github/rulesets/",
+  ".platform/",
+  ".gitleaksignore",
+  "actions/",
+  "platform/files/",
+  "scripts/platform/",
+  "ops/platform.json",
   "scripts/rulesets.ts",
   "scripts/apply-rulesets.ts",
   ".claude/",
@@ -58,6 +65,9 @@ export const GUARDED_FILES = [
   "scripts/check-guardrails.ts",
   "tests/unit/guardrails.test.ts",
 ];
+
+/** A tool's allowance for old problems. Lowering it is always fine; raising it needs a person. */
+const BASELINE_FILE = ".platform/baseline.json";
 
 /** Folders whose tests must never be deleted to make CI pass. */
 export const PROTECTED_TEST_DIRS = ["tests/security/", "tests/regressions/"];
@@ -129,7 +139,7 @@ export function findWeakenedChecks(change: ChangeSet): Finding[] {
   // 1. Files that decide what gets checked
   for (const file of change.files) {
     for (const path of new Set([file.path, file.oldPath].filter((p): p is string => !!p))) {
-      if (!matches(path, GUARDED_FILES)) continue;
+      if (!matches(path, GUARDED_FILES) || path === BASELINE_FILE) continue;
       // Dependabot only bumps pinned action versions; let it through.
       if (isDependabot && path.startsWith(".github/workflows/")) continue;
       findings.push({ rule: "guarded file changed", detail: `${path} (${file.status})` });
@@ -165,6 +175,19 @@ export function findWeakenedChecks(change: ChangeSet): Finding[] {
   // 5. Budgets raised, AI evaluation baseline lowered
   findings.push(...compareNumbers(change, "budgets.json", "higher", "budget raised"));
   findings.push(...compareNumbers(change, "evals/baseline.json", "lower", "baseline lowered"));
+
+  // 5b. A tool's baseline may only shrink
+  if (change.files.some((f) => f.path === BASELINE_FILE && f.status !== "D")) {
+    const after = parseJson(change.readHead(BASELINE_FILE)) as Baseline | undefined;
+    const before = parseJson(change.readBase(BASELINE_FILE)) as Baseline | undefined;
+    if (!after?.checks) {
+      findings.push({ rule: "baseline raised", detail: `${BASELINE_FILE} can't be read.` });
+    } else {
+      for (const detail of baselineLoosened(before, after)) {
+        findings.push({ rule: "baseline raised", detail: `${BASELINE_FILE}: ${detail}` });
+      }
+    }
+  }
 
   // 6. The scripts CI runs, changed or removed
   const scriptsOf = (text: string | undefined) =>

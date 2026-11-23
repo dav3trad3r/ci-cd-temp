@@ -7,6 +7,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { loadRegistry, type RegistryEntry } from "../platform/model.js";
 
 export interface SreTool {
   name: string;
@@ -43,10 +44,37 @@ export interface SreLock {
 }
 
 export const CONFIG_PATH = "ops/sre-agent.json";
-export const LOCK_PATH = "ops/sre-agent.lock.json";
+export const LOCK_PATH = process.env.SRE_LOCK_PATH ?? "ops/sre-agent.lock.json";
 
+/** owner/name of this checkout, from GitHub Actions or the origin remote. */
+export function currentRepository(): string {
+  if (process.env.GITHUB_REPOSITORY) return process.env.GITHUB_REPOSITORY;
+  const url = tryGit(["remote", "get-url", "origin"])?.trim() ?? "";
+  return url.match(/github\.com[:/]([^/]+\/[^/.]+?)(?:\.git)?$/)?.[1] ?? "";
+}
+
+export function toSreTool(entry: RegistryEntry): SreTool {
+  return {
+    name: entry.name,
+    owner: entry.owner,
+    githubReviewer: entry.githubReviewer,
+    repo: entry.repo,
+    baseBranch: entry.baseBranch,
+    resourceGroup: entry.resourceGroup,
+    containerApp: entry.containerApp,
+    logAnalyticsWorkspaceId: entry.logAnalyticsWorkspaceId,
+  };
+}
+
+/** The agent's settings, plus every tool in the register (ops/tools/). */
 export function loadConfig(): SreConfig {
-  return JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as SreConfig;
+  const config = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as SreConfig;
+  const registered = loadRegistry().map(toSreTool);
+  const names = new Set(registered.map((t) => t.name));
+  const own = config.tools
+    .filter((t) => !names.has(t.name))
+    .map((t) => ({ ...t, repo: t.repo || currentRepository() }));
+  return { ...config, tools: [...own, ...registered] };
 }
 
 export function loadLock(): SreLock {
@@ -72,9 +100,10 @@ export function anthropicClient(): Anthropic {
   throw new Error(`No Anthropic API key: set ANTHROPIC_API_KEY, or save the key in ${file}`);
 }
 
-export function git(args: string[], cwd = "."): string {
+export function git(args: string[], cwd = ".", env?: NodeJS.ProcessEnv): string {
   return execFileSync("git", args, {
     cwd,
+    env: env ?? process.env,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],

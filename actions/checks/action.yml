@@ -1,0 +1,56 @@
+name: Platform checks
+description: Runs a tool's install, lint, tests and build, plus secret, exposed-data and vulnerability checks, against its baseline.
+inputs:
+  path:
+    description: The tool's folder, if it isn't the repository root
+    default: "."
+outputs:
+  ready:
+    description: Whether the tool is safe to deploy
+    value: ${{ steps.run.outputs.ready }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: "22"
+    - id: platform
+      shell: bash
+      run: |
+        root="$(cd "$GITHUB_ACTION_PATH/../.." && pwd)"
+        npm ci --prefix "$root" --no-audit --no-fund --ignore-scripts
+        echo "root=$root" >> "$GITHUB_OUTPUT"
+        echo "node=$(command -v node)" >> "$GITHUB_OUTPUT"
+    - name: Install Gitleaks (checksum verified)
+      shell: bash
+      run: bash "${{ steps.platform.outputs.root }}/actions/install-gitleaks.sh"
+    - id: tool
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      run: |
+        echo "node=$(node -p "require('./.platform/tool.json').nodeVersion")" >> "$GITHUB_OUTPUT"
+        echo "pm=$(node -p "require('./.platform/tool.json').packageManager || ''")" >> "$GITHUB_OUTPUT"
+    - name: The tool's own Node version
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ steps.tool.outputs.node }}
+    - name: The tool's package manager
+      shell: bash
+      env:
+        PACKAGE_MANAGER: ${{ steps.tool.outputs.pm }}
+      run: |
+        case "$PACKAGE_MANAGER" in
+          pnpm|yarn) corepack enable ;;
+          bun) npm install --global bun@1 ;;
+        esac
+    - id: run
+      name: Run the checks
+      shell: bash
+      env:
+        PLATFORM_ROOT_DIR: ${{ steps.platform.outputs.root }}
+        PLATFORM_NODE: ${{ steps.platform.outputs.node }}
+        PLATFORM_TOOL_PATH: ${{ inputs.path }}
+      run: |
+        "$PLATFORM_NODE" "$PLATFORM_ROOT_DIR/node_modules/tsx/dist/cli.mjs" \
+          --tsconfig "$PLATFORM_ROOT_DIR/tsconfig.json" \
+          "$PLATFORM_ROOT_DIR/scripts/platform/checks.ts"

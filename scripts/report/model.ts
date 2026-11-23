@@ -12,6 +12,10 @@ export interface ToolConfig {
   template?: string;
   /** Daily spend the owner expects, in the billing currency. Over it shows under "Needs a decision". */
   dailyBudget?: number;
+  /** Set for tools in the register (ops/tools/). */
+  kind?: "new" | "migrated";
+  repo?: string;
+  baseBranch?: string;
 }
 
 export interface ReportConfig {
@@ -69,10 +73,21 @@ export interface ShippedItem {
   exception: boolean;
 }
 
+/** Where a tool stands against its baseline. */
+export interface AdoptionItem {
+  tool: string;
+  kind: "new" | "migrated";
+  /** Must be fixed before the tool can deploy. */
+  serious: number;
+  /** Old problems and checks not set up yet, being worked down. */
+  known: number;
+}
+
 export interface Facts {
   title: string;
   date: string;
-  tools: { name: string; owner: string }[];
+  tools: { name: string; owner: string; kind?: "new" | "migrated" }[];
+  adoption: AdoptionItem[];
   drift: DriftItem[];
   outsideCode: OutsideItem[];
   changes: ChangeItem[];
@@ -87,7 +102,12 @@ export function emptyFacts(config: ReportConfig, now: Date): Facts {
   return {
     title: config.title,
     date: formatDate(now, config.timeZone),
-    tools: config.tools.map((t) => ({ name: t.name, owner: t.owner })),
+    tools: config.tools.map((t) => ({
+      name: t.name,
+      owner: t.owner,
+      ...(t.kind ? { kind: t.kind } : {}),
+    })),
+    adoption: [],
     drift: [],
     outsideCode: [],
     changes: [],
@@ -181,7 +201,13 @@ export function parseWhatIf(tool: string, result: unknown): DriftItem[] {
 // - "NoEffect": what-if itself says nothing would change
 // - an "after" value still written as an expression ("[reference(...)]"), only known at deploy time
 // Resources made outside the code are caught by the managed-by tag check instead.
-function isNoise(d: WhatIfDelta): boolean {
+// The deploy pipeline changes the image, the revision and the traffic on purpose, so those are
+// releases rather than drift.
+const DEPLOY_OWNED =
+  /^properties\.template\.containers\.\d+\.image$|^properties\.template\.revisionSuffix$|^properties\.configuration\.ingress\.traffic/;
+
+function isNoise(d: WhatIfDelta, path = ""): boolean {
+  if (DEPLOY_OWNED.test(path)) return true;
   if (d.propertyChangeType === "Delete" || d.propertyChangeType === "NoEffect") return true;
   return typeof d.after === "string" && d.after.startsWith("[") && d.after.endsWith("]");
 }
@@ -193,7 +219,7 @@ function flattenDelta(delta: WhatIfDelta[], prefix = ""): string[] {
     const path = prefix && d.path ? `${prefix}.${d.path}` : (d.path ?? prefix);
     if (d.children && d.children.length > 0) {
       lines.push(...flattenDelta(d.children, path));
-    } else if (!isNoise(d)) {
+    } else if (!isNoise(d, path)) {
       lines.push(`${path}: Azure has ${show(d.before)}, the code says ${show(d.after)}`);
     }
   }
@@ -351,6 +377,25 @@ export function parseCost(
     if (!tools.some((t) => t.name === tool) && amount > 0) rows.push({ tool, amount });
   }
   return { currency: currency || "AUD", rows };
+}
+
+/** Reads a tool's .platform/baseline.json. A tool with no baseline has nothing outstanding. */
+export function parseAdoption(tool: ToolConfig, baseline: unknown): AdoptionItem {
+  const checks = Object.values(
+    (baseline as { checks?: Record<string, { serious?: boolean }> } | null)?.checks ?? {},
+  );
+  const serious = checks.filter((c) => c.serious).length;
+  return {
+    tool: tool.name,
+    kind: tool.kind ?? "new",
+    serious,
+    known: checks.length - serious,
+  };
+}
+
+/** One search across every registered tool's repository. */
+export function repoQuery(tools: ToolConfig[]): string {
+  return [...new Set(tools.flatMap((t) => (t.repo ? [`repo:${t.repo}`] : [])))].join(" ");
 }
 
 // ── What shipped: GitHub ────────────────────────────────────────────────────────

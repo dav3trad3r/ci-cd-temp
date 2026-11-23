@@ -1,15 +1,7 @@
 {
   "title": "Platform report",
   "timeZone": "Australia/Brisbane",
-  "tools": [
-    {
-      "name": "leasing-assistant",
-      "owner": "jane.citizen@example.com",
-      "resourceGroup": "rg-leasing-assistant",
-      "parameters": "infra/tools/example.bicepparam",
-      "dailyBudget": 5
-    }
-  ],
+  "tools": [],
   "watchResourceGroups": ["rg-platform"],
   "foundry": {
     "resource": "",

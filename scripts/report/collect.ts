@@ -13,12 +13,14 @@ import {
   emptyFacts,
   mergedSearchQuery,
   outsideCodeQuery,
+  parseAdoption,
   parseAlerts,
   parseChanges,
   parseCost,
   parseOutside,
   parsePulls,
   parseWhatIf,
+  repoQuery,
   whatIfArgs,
   type Facts,
   type ReportConfig,
@@ -135,10 +137,34 @@ export async function collect(config: ReportConfig, now = new Date()): Promise<F
     facts.cost = parseCost(result, config.tools);
   });
 
+  for (const tool of config.tools.filter((t) => t.repo)) {
+    await attempt(`Checks baseline for ${tool.name}`, problems, async () => {
+      const token = process.env.GITHUB_TOKEN;
+      const response = await fetch(
+        `https://api.github.com/repos/${tool.repo}/contents/.platform/baseline.json?ref=${encodeURIComponent(tool.baseBranch ?? "main")}`,
+        {
+          headers: {
+            Accept: "application/vnd.github.raw+json",
+            "User-Agent": "ci-cd-temp-daily-report",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        },
+      );
+      if (response.status === 404) {
+        facts.adoption.push(parseAdoption(tool, null));
+        return;
+      }
+      if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
+      facts.adoption.push(parseAdoption(tool, await response.json()));
+    });
+  }
+
   await attempt("What shipped (GitHub)", problems, async () => {
-    const base = config.github?.query || `repo:${process.env.GITHUB_REPOSITORY ?? ""}`;
-    if (base === "repo:")
-      throw new Error("set github.query in ops/daily-report.json, or run in GitHub Actions");
+    const base =
+      config.github?.query ||
+      repoQuery(config.tools) ||
+      (process.env.GITHUB_REPOSITORY ? `repo:${process.env.GITHUB_REPOSITORY}` : "");
+    if (!base) throw new Error("register a tool, set github.query, or run this in GitHub Actions");
     const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const q = encodeURIComponent(mergedSearchQuery(base, since));
     const token = process.env.GITHUB_TOKEN;

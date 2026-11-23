@@ -1,0 +1,62 @@
+name: Platform deploy
+description: Builds a tool's image once, deploys it to a staging revision, promotes it, or rolls it back on Azure Container Apps.
+inputs:
+  mode:
+    description: image, staging, promote or rollback
+    required: true
+  registry:
+    description: Azure Container Registry name (image mode)
+    default: ""
+  image:
+    description: The image to deploy (staging mode)
+    default: ""
+  revision:
+    description: The revision to promote (promote mode)
+    default: ""
+  gate:
+    description: How production is approved. "environment" uses required reviewers (GitHub Enterprise); empty means a Pipeline approver promotes by hand
+    default: ""
+  github-token:
+    description: Used only to confirm who approved a release
+    default: ${{ github.token }}
+  path:
+    description: The tool's folder, if it isn't the repository root
+    default: "."
+outputs:
+  image:
+    description: The image that was built
+    value: ${{ steps.run.outputs.image }}
+  revision:
+    description: The staging revision
+    value: ${{ steps.run.outputs.revision }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: "22"
+    - id: platform
+      shell: bash
+      run: |
+        root="$(cd "$GITHUB_ACTION_PATH/../.." && pwd)"
+        npm ci --prefix "$root" --no-audit --no-fund --ignore-scripts
+        echo "root=$root" >> "$GITHUB_OUTPUT"
+    - name: Azure CLI extension
+      shell: bash
+      run: az extension add --name containerapp --upgrade --only-show-errors
+    - id: run
+      name: Deploy
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      env:
+        PLATFORM_ROOT_DIR: ${{ steps.platform.outputs.root }}
+        DEPLOY_MODE: ${{ inputs.mode }}
+        DEPLOY_REGISTRY: ${{ inputs.registry }}
+        DEPLOY_IMAGE: ${{ inputs.image }}
+        DEPLOY_REVISION: ${{ inputs.revision }}
+        PRODUCTION_GATE: ${{ inputs.gate }}
+        DEPLOY_GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        node "$PLATFORM_ROOT_DIR/node_modules/tsx/dist/cli.mjs" \
+          --tsconfig "$PLATFORM_ROOT_DIR/tsconfig.json" \
+          "$PLATFORM_ROOT_DIR/scripts/platform/deploy.ts" "$DEPLOY_MODE"
