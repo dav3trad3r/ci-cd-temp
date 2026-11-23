@@ -71,6 +71,8 @@ Add `--go` (with `GITHUB_ADMIN_TOKEN`) to create the private repository, move ev
 | **Secrets in the browser, or a Supabase table without row-level security** | Allowed, so it can be fixed             | **Blocked until fixed** |
 | **A secret in the git history**                                            | **Fails**                               | Blocked                 |
 
+Guardrails goes by what a file is, so it covers a migrated tool's own layout: its test scripts, its lint, test and type settings in any folder, skipped or deleted tests, and silenced checks. Dependabot may only move an action's version. A person can still approve an intended change with the `guardrail-change` label.
+
 Lowering the baseline needs no approval. Raising it trips Guardrails and needs a person.
 
 ### How improvements reach every tool

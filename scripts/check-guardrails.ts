@@ -51,8 +51,21 @@ if (process.env.GITHUB_EVENT_PATH) {
 }
 
 const findings = findWeakenedChecks({
-  files: parseNameStatus(git("diff", "--name-status", "-M", range)),
-  addedLines: parseAddedLines(git("diff", "--unified=0", "--no-color", "--no-ext-diff", range)),
+  files: parseNameStatus(git("diff", "--name-status", "-z", "-M", range)),
+  // --text and --no-textconv, so marking a file as binary can't hide what was added to it.
+  addedLines: parseAddedLines(
+    git(
+      "-c",
+      "core.quotePath=false",
+      "diff",
+      "--unified=0",
+      "--no-color",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--text",
+      range,
+    ),
+  ),
   readBase: (path) => tryGit("show", `${mergeBase}:${path}`),
   readHead: (path) => tryGit("show", `HEAD:${path}`),
   author,
