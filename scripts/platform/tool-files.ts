@@ -160,6 +160,7 @@ export function bicepParamFile(
     "",
     `param targetPort = ${manifest.port}`,
     `param healthPath = ${quote(manifest.healthPath)}`,
+    ...(manifest.migrate ? [`param migrateCommand = ${quote(manifest.migrate)}`] : []),
     "",
     "// The tool's Entra app registration. Replace this placeholder before the first deployment.",
     "param signInClientId = '00000000-0000-0000-0000-000000000000'",
@@ -245,6 +246,12 @@ export function applyToolFiles(
     put(`${GENERATED_DOCKERFILE}.dockerignore`, source("Dockerfile.dockerignore"));
   } else if (!manifest.dockerfile) {
     notes.push("No way to build an image was found, so this tool can't deploy yet.");
+  }
+
+  if (manifest.migratesAtStartup) {
+    notes.push(
+      'This tool looks like it changes its database when it starts. Staging shares the production database, so that change would land before approval. Move it into a command, set "migrate" in .platform/tool.json, set "migratesAtStartup" to false, and add migrateCommand to its Azure parameters.',
+    );
   }
 
   return { written, notes };

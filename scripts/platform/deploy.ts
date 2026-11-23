@@ -1,7 +1,9 @@
 // The deploy stage, on Azure Container Apps (actions/deploy). The image is built once, then:
 //   image     build it, tagged with the commit, and push it to the registry
 //   staging   start it as a new revision with no production traffic, and test it
-//   promote   after a Pipeline approver's OK, move production traffic, and put it back if it fails
+//   promote   after a Pipeline approver's OK, update the database, move production traffic, and
+//             put it back if it fails. If the database update fails, traffic doesn't move
+
 //   rollback  move production traffic to the revision that was live before
 // The previous revision keeps running, so going back takes seconds and needs no rebuild.
 import { execFile } from "node:child_process";
@@ -54,7 +56,7 @@ export function labelledRevision(state: AppState, label: string): string | undef
  *  revision's own health probe, which bypasses sign-in, is what proves the app is well. */
 export const answering = (status: number) => status >= 200 && status < 500;
 
-interface Target {
+export interface Target {
   app: string;
   group: string;
 }
@@ -187,6 +189,87 @@ const setLabel = ({ app, group }: Target, label: string, revision: string) =>
     "--yes",
   ]);
 
+/** The tool's one-off database job. Azure limits job names to 32 characters. */
+export const migrationJobName = (app: string) =>
+  `${app.slice(0, 24)}-migrate`.replace("--migrate", "-migrate");
+
+/** True once it has worked, false while running, and an error once it has clearly failed. */
+export function executionVerdict(status: string | null | undefined): boolean {
+  if (status === "Succeeded") return true;
+  if (status === "Failed" || status === "Stopped" || status === "Degraded") {
+    throw new Error(`The database update ended as ${status}.`);
+  }
+  return false;
+}
+
+/** Just over the job's own 10-minute limit, so Azure reports the result first. */
+const MIGRATION_DEADLINE = 11 * 60_000;
+
+/** Runs the tool's migration from the exact image being released. Runs after approval only. */
+async function updateDatabase({ app, group }: Target, manifest: Manifest, revision: string) {
+  if (!manifest.migrate) return;
+  const job = migrationJobName(app);
+  const scope = ["--name", job, "--resource-group", group];
+  const current = (await az(["containerapp", "job", "show", ...scope]).catch(() => null)) as {
+    properties?: { template?: { containers?: { name?: string; command?: string[] }[] } };
+  } | null;
+  const container = current?.properties?.template?.containers?.[0];
+  if (!container?.name) {
+    throw new Error(`${job} doesn't exist. Add migrateCommand and deploy the tool's Bicep.`);
+  }
+  // The job holds the tool's database credentials, so it only runs the command in the repository.
+  if (JSON.stringify(container.command) !== JSON.stringify(["sh", "-c", manifest.migrate])) {
+    throw new Error(`${job} runs a different command from the manifest. Deploy the tool's Bicep.`);
+  }
+  const image = (await az([
+    "containerapp",
+    "revision",
+    "show",
+    "--name",
+    app,
+    "--resource-group",
+    group,
+    "--revision",
+    revision,
+    "--query",
+    "properties.template.containers[0].image",
+  ])) as string;
+  await az([
+    "containerapp",
+    "job",
+    "update",
+    ...scope,
+    "--container-name",
+    container.name,
+    "--image",
+    image,
+  ]);
+  const { name: execution } = (await az(["containerapp", "job", "start", ...scope])) as {
+    name: string;
+  };
+  console.log(`Updating the database: ${execution}`);
+  const deadline = Date.now() + MIGRATION_DEADLINE;
+  while (Date.now() < deadline) {
+    const status = (await az([
+      "containerapp",
+      "job",
+      "execution",
+      "show",
+      ...scope,
+      "--job-execution-name",
+      execution,
+      "--query",
+      "properties.status",
+    ])) as string | null;
+    if (executionVerdict(status)) {
+      console.log("The database is up to date.");
+      return;
+    }
+    await sleep(5_000);
+  }
+  throw new Error(`${execution} didn't finish in time.`);
+}
+
 async function buildImage(manifest: Manifest, registry: string, sha: string): Promise<string> {
   if (!manifest.dockerfile) throw new Error(`${manifest.name} has no Dockerfile to build.`);
   if (!registry) throw new Error("Set the AZURE_REGISTRY variable to the registry's name.");
@@ -210,6 +293,11 @@ async function deployStaging(
 ): Promise<string> {
   const before = await readApp(target);
   const live = liveRevision(before);
+  if (manifest.migratesAtStartup) {
+    console.log(
+      `::warning::${manifest.name} changes its database when it starts, so this staging revision can change production before approval. Set "migrate" in .platform/tool.json to fix it.`,
+    );
+  }
   await az([
     "containerapp",
     "revision",
@@ -260,7 +348,7 @@ async function deployStaging(
       revision,
     ]).catch(() => undefined);
     console.error(
-      `${revision} was switched off and live traffic hasn't moved. Any migration it ran at startup is still in the database.`,
+      `${revision} was switched off and live traffic hasn't moved.${manifest.migratesAtStartup ? " Any migration it ran at startup is still in the database." : ""}`,
     );
     throw error;
   }
@@ -315,7 +403,7 @@ async function assertReleaseAllowed() {
   console.log(`Approved by ${actor}.`);
 }
 
-async function promote(target: Target, manifest: Manifest, wanted: string) {
+export async function promote(target: Target, manifest: Manifest, wanted: string) {
   await assertReleaseAllowed();
   const before = await readApp(target);
   // Promoted by hand, it's whatever is on the staging address now.
@@ -326,6 +414,14 @@ async function promote(target: Target, manifest: Manifest, wanted: string) {
     console.log(`${revision} is already live.`);
     return;
   }
+  try {
+    await updateDatabase(target, manifest, revision);
+  } catch (error) {
+    console.error(
+      `The database update failed, so traffic stayed on ${previous ?? "the live revision"}.`,
+    );
+    throw error;
+  }
   if (previous) await setLabel(target, "previous", previous);
   await setTraffic(target, revision);
   try {
@@ -334,13 +430,15 @@ async function promote(target: Target, manifest: Manifest, wanted: string) {
   } catch (error) {
     if (previous) {
       await setTraffic(target, previous);
-      console.error(`Production didn't answer, so traffic went back to ${previous}.`);
+      console.error(
+        `Production didn't answer, so traffic went back to ${previous}.${manifest.migrate ? " The database update stays in place." : ""}`,
+      );
     }
     throw error;
   }
 }
 
-async function rollback(target: Target, manifest: Manifest) {
+export async function rollback(target: Target, manifest: Manifest) {
   await assertReleaseAllowed();
   const state = await readApp(target);
   const previous = labelledRevision(state, "previous");
@@ -349,7 +447,9 @@ async function rollback(target: Target, manifest: Manifest) {
   await setTraffic(target, previous);
   if (current && current !== previous) await setLabel(target, "previous", current);
   const status = await waitUntilAnswering(`https://${state.fqdn}${manifest.healthPath}`, 12);
-  console.log(`Rolled back to ${previous}, which answered ${status}.`);
+  console.log(
+    `Rolled back to ${previous}, which answered ${status}.${manifest.migrate ? " Traffic moved, but any database change stays in place." : ""}`,
+  );
 }
 
 async function main() {
