@@ -4,6 +4,8 @@
 // - new problems fail the pull request, and the allowance can only shrink
 // - serious problems (secrets in the browser, exposed data) never block a pull request that is
 //   trying to fix them, but they do block every deployment until they're gone
+// - a tool that can't install or build can't deploy, whatever its baseline says
+// - a check that crashed proves nothing, so it never counts as the same old problem
 // Pure, so every rule is unit-tested.
 import { stripVTControlCharacters } from "node:util";
 
@@ -41,6 +43,9 @@ export const CHECK_LABELS: Record<CheckName, string> = {
 /** Must be fixed before the tool goes live. */
 export const SERIOUS: ReadonlySet<CheckName> = new Set(["frontend", "data"]);
 
+/** Without these there's nothing to deploy, so a known failure still stops a release. */
+const MUST_WORK: ReadonlySet<CheckName> = new Set(["install", "build"]);
+
 /** A secret can never be accepted as "known": replace the key, then record that you did. */
 const NEVER_BASELINED: ReadonlySet<CheckName> = new Set(["secrets"]);
 
@@ -52,6 +57,8 @@ export interface RawResult {
   output: string;
   /** Set when the check doesn't apply or couldn't run, with the reason. */
   skipped?: string;
+  /** The process was killed or couldn't start, so its output says nothing about the code. */
+  crashed?: boolean;
 }
 
 export interface BaselineEntry {
@@ -59,6 +66,8 @@ export interface BaselineEntry {
   /** How many problems were counted, when the check's output can be counted. */
   problems: number | null;
   serious?: boolean;
+  /** It was already crashing when the tool joined. */
+  crashed?: boolean;
 }
 
 export interface Baseline {
@@ -97,10 +106,14 @@ export function countProblems(name: CheckName, rawOutput: string): number | null
       const lines = countMatches(output, /^\s*\d+:\d+\s+(?:error|warning)\b/gm);
       return lines > 0 ? lines : null;
     }
-    case "test":
-      return (
-        number(/Tests\s+(\d+) failed/) ?? number(/Tests:\s+(\d+) failed/) ?? number(/# fail (\d+)/)
-      );
+    case "test": {
+      const tests =
+        number(/Tests\s+(\d+) failed/) ?? number(/Tests:\s+(\d+) failed/) ?? number(/# fail (\d+)/);
+      // A file that can't load runs none of its tests, so the test count alone hides it.
+      const unloaded =
+        (number(/Failed Suites (\d+)/) ?? 0) + countMatches(output, /Test suite failed to run/g);
+      return tests === null && unloaded === 0 ? null : (tests ?? 0) + unloaded;
+    }
     case "format": {
       const files = countMatches(output, /^\[warn\] (?!Code style|Run Prettier).+$/gm);
       return files > 0 ? files : null;
@@ -133,7 +146,12 @@ export function evaluate(raw: RawResult, baseline?: Baseline): Evaluated {
     detail,
   });
 
-  if (raw.skipped) return result("skip", raw.skipped);
+  if (raw.skipped) {
+    // Not being able to look doesn't mean a serious problem has gone.
+    return known?.serious
+      ? result("known", `not checked (${raw.skipped}), so it's still open`, known.problems)
+      : result("skip", raw.skipped);
+  }
 
   if (!raw.configured) {
     return known?.status === "missing"
@@ -159,6 +177,15 @@ export function evaluate(raw: RawResult, baseline?: Baseline): Evaluated {
       count,
     );
   }
+  if (raw.crashed && !known.crashed) {
+    return result("fail", "crashed or was killed, so it says nothing about the code", count);
+  }
+  if (known.problems !== null && count === null) {
+    return result(
+      "fail",
+      `stopped without a result (baseline ${known.problems}), so it may have crashed`,
+    );
+  }
   if (known.problems !== null && count !== null && count > known.problems) {
     return result(
       "fail",
@@ -174,9 +201,13 @@ export function evaluate(raw: RawResult, baseline?: Baseline): Evaluated {
   );
 }
 
-/** Safe to deploy: nothing failing, and no serious problem left on the baseline. */
+/** A known problem that a pull request may carry, but a release may not. */
+export const blocksDeploy = (r: Evaluated) =>
+  r.status === "known" && (r.serious || MUST_WORK.has(r.name));
+
+/** Safe to deploy: nothing failing, and no known problem that stops a release. */
 export function isReady(results: Evaluated[]): boolean {
-  return !results.some((r) => r.status === "fail" || (r.serious && r.status === "known"));
+  return !results.some((r) => r.status === "fail" || blocksDeploy(r));
 }
 
 export function hasFailed(results: Evaluated[]): boolean {
@@ -195,6 +226,7 @@ export function makeBaseline(results: RawResult[], created: string): Baseline {
         status: "failing",
         problems: countProblems(raw.name, raw.output),
         ...(SERIOUS.has(raw.name) ? { serious: true } : {}),
+        ...(raw.crashed ? { crashed: true } : {}),
       };
     }
   }
@@ -214,6 +246,8 @@ export function baselineLoosened(before: Baseline | undefined, after: Baseline):
       changes.push(`${name} went from failing to not set up`);
     } else if (was.status === "missing" && now.status === "failing") {
       changes.push(`${name} went from not set up to failing`);
+    } else if (now.crashed && !was.crashed) {
+      changes.push(`${name} now allows a crash`);
     } else if (was.problems !== null && (now.problems === null || now.problems > was.problems)) {
       changes.push(`${name} allowance went from ${was.problems} to ${now.problems ?? "uncounted"}`);
     }

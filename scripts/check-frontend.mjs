@@ -79,7 +79,7 @@ for (const file of files) {
 // 2. Public variables named like secrets: VITE_ (Vite), NEXT_PUBLIC_ (Next.js) and REACT_APP_
 //    (Create React App) are all sent to the browser. Checked in the example env file and the front-end source.
 const SECRET_NAME =
-  /\b(?:VITE|NEXT_PUBLIC)_[A-Z0-9_]*(SECRET|PRIVATE|PASSWORD|TOKEN|SERVICE_ROLE|API_KEY)[A-Z0-9_]*/g;
+  /\b(?:VITE|NEXT_PUBLIC|REACT_APP)_[A-Z0-9_]*(SECRET|PRIVATE|PASSWORD|TOKEN|SERVICE_ROLE|API_KEY)[A-Z0-9_]*/g;
 async function walkIfPresent(dir) {
   try {
     return await walk(dir);
