@@ -97,6 +97,7 @@ const trafficMoves = () =>
 
 let answerStatus = 200;
 beforeEach(() => {
+  vi.stubEnv("GITHUB_ACTIONS", "false"); // the release check calls GitHub only in Actions
   azure.calls.length = 0;
   answerStatus = 200;
   timing.retry = 0;
@@ -110,6 +111,7 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
