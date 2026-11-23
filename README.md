@@ -68,10 +68,12 @@ Add `--go` (with `GITHUB_ADMIN_TOKEN`) to create the private repository, move ev
 | Old lint, type, test or format problems                                    | Allowed, and the count can only go down | Allowed                 |
 | A check the tool doesn't have yet                                          | Shown as a to-do                        | Allowed                 |
 | **Any new problem**                                                        | **Fails**                               | Blocked                 |
+| **A check that crashes or stops without a result**                         | **Fails**                               | Blocked                 |
+| **An install or build that already failed**                                | Allowed, so it can be fixed             | **Blocked until fixed** |
 | **Secrets in the browser, or a Supabase table without row-level security** | Allowed, so it can be fixed             | **Blocked until fixed** |
 | **A secret in the git history**                                            | **Fails**                               | Blocked                 |
 
-Lowering the baseline needs no approval. Raising it trips Guardrails and needs a person.
+Lowering the baseline needs no approval. Raising it trips Guardrails and needs a person. The baseline counts problems rather than naming them, so three new test failures that replace three old ones aren't caught.
 
 ### How improvements reach every tool
 

@@ -19,7 +19,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { CHECK_LABELS, evaluate, makeBaseline, SERIOUS } from "./baseline.js";
+import { blocksDeploy, CHECK_LABELS, evaluate, makeBaseline } from "./baseline.js";
 import { detectStack, type PackageJson, type RepoFacts } from "./detect.js";
 import {
   BASELINE_PATH,
@@ -437,7 +437,7 @@ async function migrate() {
     const baseline = makeBaseline(raw, new Date().toISOString().slice(0, 10));
     writeFileSync(join(dir, BASELINE_PATH), `${JSON.stringify(baseline, null, 2)}\n`);
     const results = raw.map((r) => evaluate(r, baseline));
-    const serious = results.filter((r) => SERIOUS.has(r.name) && r.status === "known");
+    const serious = results.filter(blocksDeploy);
 
     const paths = [
       MANIFEST_PATH,

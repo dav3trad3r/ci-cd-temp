@@ -7,6 +7,7 @@ import { join, relative } from "node:path";
 import {
   CHECK_LABELS,
   CHECK_ORDER,
+  blocksDeploy,
   type Baseline,
   type CheckName,
   type Evaluated,
@@ -23,7 +24,12 @@ const OUTPUT_LIMIT = 512 * 1024;
 interface Ran {
   ok: boolean;
   output: string;
+  crashed: boolean;
 }
+
+/** Killed by a signal, or a shell's 126 (can't run), 127 (not found) or 128 + signal. */
+const didCrash = (code: number | null, signal: NodeJS.Signals | null) =>
+  signal !== null || code === null || code >= 126;
 
 function run(file: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, shell: boolean) {
   return new Promise<Ran>((done) => {
@@ -37,11 +43,11 @@ function run(file: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, 
     const timer = setTimeout(() => child.kill("SIGKILL"), COMMAND_TIMEOUT);
     child.on("error", (error) => {
       clearTimeout(timer);
-      done({ ok: false, output: `${output}\n${error.message}` });
+      done({ ok: false, output: `${output}\n${error.message}`, crashed: true });
     });
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       clearTimeout(timer);
-      done({ ok: code === 0, output });
+      done({ ok: code === 0, output, crashed: code !== 0 && didCrash(code, signal) });
     });
   });
 }
@@ -51,15 +57,17 @@ export function loadBaseline(dir: string): Baseline | undefined {
   return existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as Baseline) : undefined;
 }
 
+const NOT_SOURCE = new Set([".git", ".next", "build", "coverage", "dist", "node_modules"]);
+
+/** Every SQL file in the tool, wherever it keeps them. */
 function sqlFiles(dir: string): SqlFile[] {
-  const roots = ["db", "supabase/migrations", "migrations", "prisma/migrations", "sql"];
   const out: SqlFile[] = [];
   const walk = (folder: string) => {
     for (const entry of readdirSync(folder, { withFileTypes: true })) {
       const path = join(folder, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name !== "node_modules") walk(path);
-      } else if (entry.name.endsWith(".sql") && statSync(path).size < 2_000_000) {
+        if (!NOT_SOURCE.has(entry.name)) walk(path);
+      } else if (entry.isFile() && entry.name.endsWith(".sql") && statSync(path).size < 2_000_000) {
         out.push({
           path: relative(dir, path).split("\\").join("/"),
           text: readFileSync(path, "utf8"),
@@ -67,10 +75,7 @@ function sqlFiles(dir: string): SqlFile[] {
       }
     }
   };
-  for (const root of roots) {
-    const path = join(dir, root);
-    if (existsSync(path)) walk(path);
-  }
+  walk(dir);
   return out;
 }
 
@@ -151,7 +156,13 @@ export async function collectResults(options: CheckOptions): Promise<RawResult[]
       return false;
     }
     const result = await run(text, [], dir, env, true);
-    add({ name, configured: true, ok: result.ok, output: result.output });
+    add({
+      name,
+      configured: true,
+      ok: result.ok,
+      output: result.output,
+      ...(result.crashed ? { crashed: true } : {}),
+    });
     return result.ok;
   };
 
@@ -180,9 +191,17 @@ export async function collectResults(options: CheckOptions): Promise<RawResult[]
   if (wanted("frontend")) {
     const webDir = manifest.webDir;
     if (!webDir) skip("frontend", "no browser files");
-    else if (!existsSync(join(dir, webDir)))
-      skip("frontend", built ? `${webDir} wasn't produced` : "no build to check");
-    else {
+    else if (!existsSync(join(dir, webDir))) {
+      // The build worked but its files moved, so the browser code can't be checked.
+      if (built) {
+        add({
+          name: "frontend",
+          configured: true,
+          ok: false,
+          output: `✗ The build finished but ${webDir} wasn't produced. Update webDir in .platform/tool.json.`,
+        });
+      } else skip("frontend", "no build to check");
+    } else {
       const result = await run(
         process.execPath,
         [join(PLATFORM_ROOT, "scripts/check-frontend.mjs")],
@@ -223,8 +242,7 @@ const STATUS_WORD: Record<Evaluated["status"], string> = {
 
 export function summaryTable(results: Evaluated[]): string {
   const rows = results.map((r) => {
-    const status =
-      r.serious && r.status === "known" ? "Must fix before go-live" : STATUS_WORD[r.status];
+    const status = blocksDeploy(r) ? "Must fix before go-live" : STATUS_WORD[r.status];
     return `| ${CHECK_LABELS[r.name]} | ${status} | ${r.detail} |`;
   });
   return ["| Check | Result | Detail |", "| --- | --- | --- |", ...rows].join("\n");
