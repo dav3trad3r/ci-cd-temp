@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { applyMigrations, inMemoryDb, onBoot, pendingMigrations } from "../../src/lib/db.js";
 import { detectStack, migratesAtStartup, type RepoFacts } from "../../scripts/platform/detect.js";
-import { migrationJobName, promote, rollback } from "../../scripts/platform/deploy.js";
+import { migrationJobName, promote, rollback, timing } from "../../scripts/platform/deploy.js";
 import { manifestSchema, newRegistryEntry } from "../../scripts/platform/model.js";
 import { applyToolFiles, bicepParamFile } from "../../scripts/platform/tool-files.js";
 
@@ -100,6 +100,8 @@ const MOVE_TRAFFIC = "containerapp ingress traffic set";
 describe("a release changes the database only after approval", () => {
   beforeEach(() => {
     azure.calls.length = 0;
+    timing.retry = 0;
+    timing.trafficCheck = 0;
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(null, { status: 200 })),

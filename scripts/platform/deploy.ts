@@ -48,6 +48,11 @@ export function liveRevision(state: AppState): string | undefined {
   return top.latestRevision ? state.latestReady : top.revisionName;
 }
 
+/** True when no revision is pinned, so a new revision would go live by itself. */
+export const followsLatest = (state: AppState) =>
+  state.traffic.some((t) => t.latestRevision && (t.weight ?? 0) > 0) ||
+  !state.traffic.some((t) => (t.weight ?? 0) > 0);
+
 export function labelledRevision(state: AppState, label: string): string | undefined {
   return state.traffic.find((t) => t.label === label)?.revisionName;
 }
@@ -98,6 +103,9 @@ async function readApp({ app, group }: Target): Promise<AppState> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** How long to wait between tries, and between checks that a rollback stuck. */
+export const timing = { retry: 5_000, trafficCheck: 10_000 };
+
 async function waitUntilAnswering(url: string, tries = 40): Promise<number> {
   let last = 0;
   for (let i = 0; i < tries; i++) {
@@ -111,7 +119,7 @@ async function waitUntilAnswering(url: string, tries = 40): Promise<number> {
     } catch {
       last = 0;
     }
-    await sleep(5_000);
+    await sleep(timing.retry);
   }
   throw new Error(`${url} never answered properly (last status ${last || "no response"}).`);
 }
@@ -284,7 +292,7 @@ async function buildImage(manifest: Manifest, registry: string, sha: string): Pr
   return image;
 }
 
-async function deployStaging(
+export async function deployStaging(
   target: Target,
   manifest: Manifest,
   image: string,
@@ -309,8 +317,9 @@ async function deployStaging(
     "--mode",
     "multiple",
   ]);
-  // Pin production to what's live now, so the new revision starts with no traffic.
-  if (live) await setTraffic(target, live);
+  // Pin production to what's live now, so the new revision starts with no traffic. Traffic that's
+  // already pinned is left alone: a rollback may have moved it since this step read it.
+  if (live && followsLatest(before)) await setTraffic(target, live);
 
   const suffix = revisionSuffix(sha, attempt);
   const revision = `${target.app}--${suffix}`;
@@ -422,19 +431,45 @@ export async function promote(target: Target, manifest: Manifest, wanted: string
     );
     throw error;
   }
+  // A rollback has its own queue and may have run while this release was updating the database.
+  const liveNow = liveRevision(await readApp(target));
+  if (liveNow !== previous) {
+    throw new Error(
+      `Live traffic moved to ${liveNow} during this release, probably a rollback, so it was left there.${manifest.migrate ? " The database update stays in place." : ""}`,
+    );
+  }
   if (previous) await setLabel(target, "previous", previous);
   await setTraffic(target, revision);
   try {
     const status = await waitUntilAnswering(`https://${before.fqdn}${manifest.healthPath}`, 12);
     console.log(`Production: ${revision} is live and answered ${status}.`);
   } catch (error) {
-    if (previous) {
+    const current = await readApp(target)
+      .then(liveRevision)
+      .catch(() => revision);
+    if (previous && current === revision) {
       await setTraffic(target, previous);
       console.error(
         `Production didn't answer, so traffic went back to ${previous}.${manifest.migrate ? " The database update stays in place." : ""}`,
       );
+    } else if (current !== revision) {
+      console.error(`Production didn't answer, and traffic had already moved to ${current}.`);
     }
     throw error;
+  }
+}
+
+/** A deploy can be writing traffic at the same moment, so check the rollback stuck. */
+async function keepTraffic(target: Target, revision: string) {
+  for (let check = 0; check < 3; check++) {
+    await sleep(timing.trafficCheck);
+    const now = await readApp(target)
+      .then(liveRevision)
+      .catch(() => revision);
+    if (now !== revision) {
+      console.log(`Traffic moved to ${now} during the rollback, so it was put back.`);
+      await setTraffic(target, revision);
+    }
   }
 }
 
@@ -446,7 +481,11 @@ export async function rollback(target: Target, manifest: Manifest) {
   const current = liveRevision(state);
   await setTraffic(target, previous);
   if (current && current !== previous) await setLabel(target, "previous", current);
-  const status = await waitUntilAnswering(`https://${state.fqdn}${manifest.healthPath}`, 12);
+  const holding = keepTraffic(target, previous);
+  const status = await waitUntilAnswering(
+    `https://${state.fqdn}${manifest.healthPath}`,
+    12,
+  ).finally(() => holding);
   console.log(
     `Rolled back to ${previous}, which answered ${status}.${manifest.migrate ? " Traffic moved, but any database change stays in place." : ""}`,
   );
