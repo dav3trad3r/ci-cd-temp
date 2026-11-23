@@ -21,7 +21,7 @@ A working prototype and a foundation to adapt, not a finished platform. This is 
 | Afternoon report                           | **Not connected**  | Covers every registered tool. Its Azure checks have run read-only against a sandbox. The schedule is off, and the Teams post and AI write-up haven't run                                                                                                    |
 | SRE agent                                  | **Not connected**  | Covers every registered tool. Ran end to end on a scripted incident with a planted bug ([draft PR #12](https://github.com/dav3trad3r/ci-cd-temp/pull/12)), and its fix path is tested on a migrated tool. Its Azure tools and the alert trigger haven't run |
 | Review and merge rules                     | **Not applied**    | Dry-run tested. They need a GitHub organisation with a Pipeline approvers team                                                                                                                                                                              |
-| Deploy pipeline                            | **Partly proved**  | Staging, promote, rollback and a blocked bad release ran on a real Azure sandbox. The whole pipeline hasn't yet run from a tool's own repository                                                                                                            |
+| Deploy pipeline                            | **Partly proved**  | Staging, promote, rollback and a blocked bad release ran on a real Azure sandbox. The whole pipeline hasn't yet run from a tool's own repository. Staging shares the production database                                                                    |
 | Feature map and live verification          | **Next**           | Not built: a map of each tool's features, checked against the deployed tool                                                                                                                                                                                 |
 
 ## Two ways onto the platform
@@ -103,7 +103,9 @@ az group create --name rg-<tool> --location australiaeast
 az deployment group create --resource-group rg-<tool> --parameters infra/tools/<tool>.bicepparam --parameters image=<registry>.azurecr.io/<tool>:<commit>
 ```
 
-From then on, merging to `main` builds the image once and starts it as a **staging revision** with no production traffic. If it's unhealthy, it's switched off and production never changes. A Pipeline approver then releases it from **Actions → Platform → Run workflow → promote**, and the step confirms they hold the Maintain role. The previous revision keeps running, so **rollback** in the same menu takes seconds.
+From then on, merging to `main` builds the image once and starts it as a **staging revision** with no live traffic. If it's unhealthy, it's switched off and live traffic never moves to it. A Pipeline approver then releases it from **Actions → Platform → Run workflow → promote**, and the step confirms they hold the Maintain role. The previous revision keeps running, so **rollback** in the same menu moves traffic back in seconds.
+
+**The database isn't protected by those steps yet.** A staging revision uses the tool's production `DATABASE_URL`, and the starter app runs migrations when it boots. A schema change therefore reaches the production database before anyone approves it, even if that revision then fails its health check. Rollback moves traffic but doesn't reverse a schema change, and anyone testing the staging address is using live data.
 
 With GitHub Enterprise you can approve inside the run instead: add required reviewers to the `production` environment and set the `PRODUCTION_GATE` variable to `environment`. The release stops if those reviewers aren't really configured.
 
