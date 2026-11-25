@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { randomBytes } from "node:crypto";
 import pg from "pg";
-import { applyMigrations, fromPg, inMemoryDb } from "../lib/db.js";
+import { fromPg, inMemoryDb, migrateDatabase, onBoot } from "../lib/db.js";
 import { createApp } from "./app.js";
 
 const production = process.env.NODE_ENV === "production";
@@ -27,8 +27,14 @@ if (!process.env.DATABASE_URL) {
   console.warn("No DATABASE_URL: using a temporary in-memory database. Data is lost on restart.");
 }
 
-const applied = await applyMigrations(db);
+const databaseUrl = process.env.DATABASE_URL;
+const { applied, waiting } = await onBoot(
+  db,
+  production,
+  databaseUrl ? () => migrateDatabase(databaseUrl) : undefined,
+);
 if (applied.length) console.log(`Applied migrations: ${applied.join(", ")}`);
+if (waiting.length) console.warn(`Waiting for a release to apply: ${waiting.join(", ")}`);
 
 const app = createApp({
   db,

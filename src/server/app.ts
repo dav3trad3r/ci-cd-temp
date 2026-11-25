@@ -11,11 +11,25 @@ export interface AppOptions {
   timeZone: string;
 }
 
+/** Four-digit years, judged in UTC because an offset can cross a year. Dates read back from
+ *  Postgres with a year below 1000 can come back wrong (0001 became 2001). */
+const storableYear = (value: string) => {
+  const year = new Date(value).getUTCFullYear();
+  return year >= 1000 && year <= 9999;
+};
+
 const NewItem = z.object({
-  title: z.string().trim().min(1).max(200),
-  dueAt: z
+  // Postgres can't store a NUL character in text.
+  title: z
     .string()
-    .refine((s) => !Number.isNaN(Date.parse(s)), "Use an ISO date and time")
+    .trim()
+    .min(1)
+    .max(200)
+    .refine((s) => !s.includes("\u0000"), "Remove the NUL character"),
+  // A zone is required, so a time can't be silently read as UTC.
+  dueAt: z.iso
+    .datetime({ offset: true, error: "Use an ISO date and time with a zone" })
+    .refine(storableYear, "Use a year from 1000 to 9999")
     .optional(),
 });
 

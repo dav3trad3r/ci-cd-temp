@@ -73,6 +73,8 @@ const OWN_CHECKS: Manifest = {
   },
   webDir: null,
   start: null,
+  migrate: null,
+  migratesAtStartup: false,
   port: 8080,
   healthPath: "/",
   dockerfile: null,

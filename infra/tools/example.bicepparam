@@ -18,6 +18,9 @@ param image = 'acrtoolsexample.azurecr.io/leasing-assistant:0123abc'
 param targetPort = 8080
 param healthPath = '/healthz'
 
+// Runs once per release, after approval and before traffic moves.
+param migrateCommand = 'npm run db:migrate'
+
 param signInClientId = '00000000-0000-0000-0000-000000000000'
 
 // The settings the app refuses to start without in production (see .env.example).
