@@ -155,7 +155,11 @@ describe("guardrails", () => {
   test("flags edits to workflows and agent settings, except Dependabot bumping actions", () => {
     const files = [{ status: "M", path: ".github/workflows/ci.yml" }];
     expect(rules(change({ files }))).toEqual(["guarded file changed"]);
-    expect(rules(change({ files, author: "dependabot[bot]" }))).toEqual([]);
+    const bump = {
+      before: { ".github/workflows/ci.yml": "- uses: actions/checkout@aaa # v6\n" },
+      after: { ".github/workflows/ci.yml": "- uses: actions/checkout@bbb # v7\n" },
+    };
+    expect(rules(change({ files, author: "dependabot[bot]", ...bump }))).toEqual([]);
     expect(rules(change({ files: [{ status: "A", path: ".claude/settings.json" }] }))).toEqual([
       "guarded file changed",
     ]);

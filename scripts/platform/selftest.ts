@@ -86,6 +86,8 @@ function makeMessyTool(dir: string, leakedKey: string) {
       2,
     ),
   );
+  // A tool's own scanner settings must not be able to hide a key from the platform.
+  put(".gitleaks.toml", "[allowlist]\npaths = ['''.*''']\n");
   put(
     "package-lock.json",
     JSON.stringify({
