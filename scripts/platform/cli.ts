@@ -15,6 +15,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -78,6 +79,43 @@ export function safeSource(source: string): string {
   return source.replace(/^(https?:\/\/)[^/@]+@/i, "$1");
 }
 
+const NOT_SERVER_CODE = new Set([
+  ".git",
+  ".next",
+  "__tests__",
+  "build",
+  "coverage",
+  "dist",
+  "migrations",
+  "node_modules",
+  "scripts",
+  "test",
+  "tests",
+]);
+
+/** The tool's own code, skipping tests and migration files, which are expected to mention it. */
+function serverSources(dir: string, limit = 400): string[] {
+  const found: string[] = [];
+  const walk = (folder: string) => {
+    for (const entry of readdirSync(folder, { withFileTypes: true })) {
+      if (found.length >= limit) return;
+      const path = join(folder, entry.name);
+      if (entry.isDirectory()) {
+        if (!NOT_SERVER_CODE.has(entry.name)) walk(path);
+      } else if (
+        entry.isFile() &&
+        /\.[cm]?[jt]sx?$/.test(entry.name) &&
+        !/migrat|\.(test|spec)\./i.test(entry.name) &&
+        statSync(path).size < 200_000
+      ) {
+        found.push(readFileSync(path, "utf8"));
+      }
+    }
+  };
+  walk(dir);
+  return found;
+}
+
 function readFacts(dir: string): RepoFacts {
   const files = readdirSync(dir);
   const text = (name: string) =>
@@ -90,6 +128,7 @@ function readFacts(dir: string): RepoFacts {
     viteConfig: vite ? text(vite) : undefined,
     dockerfile: text("Dockerfile"),
     nodeVersionFile: text(".node-version") ?? text(".nvmrc"),
+    sourceFiles: serverSources(dir),
   };
 }
 
@@ -181,6 +220,7 @@ const STARTER_SCRIPTS = [
   "dev",
   "build",
   "start",
+  "db:migrate",
   "typecheck",
   "lint",
   "format",
@@ -237,6 +277,7 @@ function createNew() {
     },
     webDir: "dist/web",
     start: "npm start",
+    migrate: "npm run db:migrate",
     port: 8080,
     healthPath: "/healthz",
     dockerfile: ".platform/Dockerfile",

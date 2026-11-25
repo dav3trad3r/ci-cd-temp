@@ -1,6 +1,6 @@
 {
   "name": "ci-cd-temp",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
   "description": "A starter repo for internal tools built with AI coding assistants, with CI, security scanning and regression checks switched on from the first commit.",
   "license": "MIT",
@@ -12,6 +12,7 @@
     "dev": "tsx watch src/server/index.ts",
     "build": "tsc -p tsconfig.build.json && vite build",
     "start": "node dist/server/index.js",
+    "db:migrate": "node dist/server/migrate.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",

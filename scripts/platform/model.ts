@@ -48,6 +48,10 @@ export const manifestSchema = z.object({
   webDir: z.string().nullable(),
   /** The command that starts the built tool. */
   start: z.string().nullable(),
+  /** Updates the tool's database. Runs once per release, after approval and before traffic moves. */
+  migrate: command.default(null),
+  /** The tool changes its database when it boots, which reaches production before approval. */
+  migratesAtStartup: z.boolean().default(false),
   port: z.number().int().min(1).max(65535),
   healthPath: z.string().startsWith("/"),
   /** Dockerfile used to build the image. Null until the tool can be containerised. */

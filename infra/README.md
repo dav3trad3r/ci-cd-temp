@@ -43,6 +43,7 @@ CI lints and compiles every template on each pull request (`npm run check:infra`
 
 ## Good to know
 
+- **Database changes run as a job.** Set `migrateCommand` and the template adds a manual Container Apps job with the app's image, identity and secrets. The deploy pipeline runs it after approval and before traffic moves, and stops the release if the job is missing or runs a different command from the tool's manifest.
 - **Registries have two permission modes.** Newer registries default to per-repository permissions (ABAC), where the classic AcrPull role does nothing and pulling needs Container Registry Repository Reader. `modules/acr-pull.bicep` reads the registry's mode and assigns the right role. In ABAC mode you can go further and limit each tool to its own repository with a role-assignment condition.
 - **The first deploy with a private image can fail with `UNAUTHORIZED`** while a brand-new identity's permission spreads. Start with the public quickstart image (step 4), or run the deploy again a few minutes later.
 - **Free trial subscriptions allow only one Container Apps environment,** so `platform.bicep` needs a pay-as-you-go or company subscription.

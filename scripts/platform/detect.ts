@@ -20,6 +20,8 @@ export interface RepoFacts {
   /** The contents of the tool's own Dockerfile, if any. */
   dockerfile?: string;
   nodeVersionFile?: string;
+  /** The contents of the tool's server code, read to spot migrations at startup. */
+  sourceFiles?: string[];
 }
 
 export type Detected = Pick<
@@ -30,6 +32,8 @@ export type Detected = Pick<
   | "commands"
   | "webDir"
   | "start"
+  | "migrate"
+  | "migratesAtStartup"
   | "port"
   | "healthPath"
   | "dockerfile"
@@ -127,6 +131,23 @@ function nodeVersion(facts: RepoFacts): string {
   return Number.isFinite(major) && major >= 20 ? String(major) : "22";
 }
 
+const MIGRATION_COMMAND = /migrat|prisma\s+db\s+push|drizzle-kit\s+push|supabase\s+db\s+push/i;
+const MIGRATION_CODE =
+  /\bapplyMigrations\s*\(|\brunMigrations\s*\(|\.migrate\.latest\s*\(|\bsynchronize\s*:\s*true\b|\bsequelize\.sync\s*\(|drizzle-orm\/[\w-]+\/migrator|from\s+["']umzug["']/;
+
+/** A staging revision shares the production database, so migrating at boot skips the approval. */
+export function migratesAtStartup(facts: RepoFacts): boolean {
+  const scripts = facts.packageJson?.scripts ?? {};
+  const docker = (facts.dockerfile ?? "")
+    .split("\n")
+    .filter((line) => /^\s*(CMD|ENTRYPOINT)\b/i.test(line));
+  const startup = [scripts.prestart, scripts.start, scripts.poststart, ...docker];
+  return (
+    startup.some((text) => text !== undefined && MIGRATION_COMMAND.test(text)) ||
+    (facts.sourceFiles ?? []).some((text) => MIGRATION_CODE.test(text))
+  );
+}
+
 export function detectStack(facts: RepoFacts): Detected {
   if (!facts.packageJson) {
     return {
@@ -136,6 +157,9 @@ export function detectStack(facts: RepoFacts): Detected {
       commands: { ...NO_COMMANDS },
       webDir: null,
       start: null,
+      // Never guessed: a script called "migrate" could be a development reset.
+      migrate: null,
+      migratesAtStartup: migratesAtStartup(facts),
       port: portOf(facts),
       healthPath: "/",
       dockerfile: facts.dockerfile ? "Dockerfile" : null,
@@ -173,6 +197,8 @@ export function detectStack(facts: RepoFacts): Detected {
     },
     webDir: web,
     start,
+    migrate: null,
+    migratesAtStartup: migratesAtStartup(facts),
     port: portOf(facts),
     healthPath: "/",
     dockerfile: facts.dockerfile ? "Dockerfile" : start || web ? GENERATED_DOCKERFILE : null,

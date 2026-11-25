@@ -86,6 +86,9 @@ param maxReplicas int = 3
 @description('Health check path, such as /healthz. Leave empty to use the platform\'s default check.')
 param healthPath string = ''
 
+@description('Command that updates the database. The deploy pipeline runs it once per release, after approval and before traffic moves. Leave empty if the tool has no database.')
+param migrateCommand string = ''
+
 // ── Sign-in and secrets ─────────────────────────────────────────────────────────
 
 @description('Client ID of the tool\'s Entra app registration. Sign-in is required, and only accounts in this tenant can sign in.')
@@ -187,6 +190,23 @@ module registryPull 'modules/acr-pull.bicep' = if (!empty(registryName)) {
   }
 }
 
+// The app and its database job pull the same image and see the same settings.
+var registries = empty(registryName)
+  ? []
+  : [
+      {
+        server: '${registryName}${environment().suffixes.acrLoginServer}'
+        identity: identity.id
+      }
+    ]
+
+var secretEnv = [
+  for secret in secrets: {
+    name: secret.env
+    secretRef: secret.name
+  }
+]
+
 resource app 'Microsoft.App/containerApps@2025-01-01' = {
   name: name
   location: location
@@ -209,14 +229,7 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = {
         transport: 'auto'
         allowInsecure: false
       }
-      registries: empty(registryName)
-        ? []
-        : [
-            {
-              server: '${registryName}${environment().suffixes.acrLoginServer}'
-              identity: identity.id
-            }
-          ]
+      registries: registries
       secrets: [
         for secret in secrets: {
           name: secret.name
@@ -234,12 +247,7 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = {
             cpu: json(cpu)
             memory: memory
           }
-          env: [
-            for secret in secrets: {
-              name: secret.env
-              secretRef: secret.name
-            }
-          ]
+          env: secretEnv
           probes: empty(healthPath)
             ? []
             : [
@@ -270,6 +278,63 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = {
         minReplicas: minReplicas
         maxReplicas: maxReplicas
       }
+    }
+  }
+  dependsOn: [
+    appReadsSecrets
+    registryPull
+  ]
+}
+
+// Updates the database once per release. A staging revision shares the production database, so
+// this runs only after approval, from the image being released, and before traffic moves.
+resource migrationJob 'Microsoft.App/jobs@2025-01-01' = if (!empty(migrateCommand)) {
+  name: replace('${take(name, 24)}-migrate', '--migrate', '-migrate')
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${identity.id}': {}
+    }
+  }
+  properties: {
+    environmentId: environmentId
+    workloadProfileName: workloadProfileName
+    configuration: {
+      triggerType: 'Manual'
+      replicaTimeout: 600
+      replicaRetryLimit: 0
+      manualTriggerConfig: {
+        parallelism: 1
+        replicaCompletionCount: 1
+      }
+      registries: registries
+      secrets: [
+        for secret in secrets: {
+          name: secret.name
+          keyVaultUrl: '${vault.properties.vaultUri}secrets/${secret.name}'
+          identity: identity.id
+        }
+      ]
+    }
+    template: {
+      containers: [
+        {
+          name: 'migrate'
+          image: image
+          command: [
+            'sh'
+            '-c'
+            migrateCommand
+          ]
+          resources: {
+            cpu: json(cpu)
+            memory: memory
+          }
+          env: secretEnv
+        }
+      ]
     }
   }
   dependsOn: [
