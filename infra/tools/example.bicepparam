@@ -23,6 +23,10 @@ param migrateCommand = 'npm run db:migrate'
 
 param signInClientId = '00000000-0000-0000-0000-000000000000'
 
+// Gives this tool its own build and release identities.
+param githubRepo = 'your-org/leasing-assistant'
+param deployBranch = 'main'
+
 // The settings the app refuses to start without in production (see .env.example).
 param secrets = [
   { name: 'app-jwt-secret', env: 'APP_JWT_SECRET' }

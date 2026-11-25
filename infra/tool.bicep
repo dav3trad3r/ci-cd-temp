@@ -111,6 +111,12 @@ param secretsOfficerIds string[] = []
 @description('Purge protection keeps a deleted vault recoverable for 90 days and cannot be turned off later. Turn it off only in a sandbox.')
 param keyVaultPurgeProtection bool = true
 
+@description('The tool\'s GitHub repository, as org/name. Gives the tool its own build and release identities, so its pipeline can reach only this tool.')
+param githubRepo string = ''
+
+@description('The branch allowed to build images.')
+param deployBranch string = 'main'
+
 @description('Server errors (5xx) in 5 minutes before the platform team is alerted.')
 param alert5xxThreshold int = 5
 
@@ -130,6 +136,8 @@ var vaultName = 'kv${take(replace(name, '-', ''), 14)}${take(uniqueString(resour
 var roles = {
   keyVaultSecretsUser: '4633458b-17de-408a-b874-0445c86b69e6'
   keyVaultSecretsOfficer: 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
+  containerAppsContributor: '358470bc-b998-42bd-ab17-a7e34c199c0f'
+  containerAppsJobsContributor: '4e3d2b60-56ae-4dc6-a233-09c8e5a82e68'
 }
 
 // A user-assigned identity exists before the app does, so it can be given access to the
@@ -416,6 +424,98 @@ resource serverErrors 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   }
 }
 
+// ── This tool's deploy identities ───────────────────────────────────────────────
+// Two identities, so a pipeline can't reach another tool. Build can only push this tool's image.
+// Release can only change this tool's app and database job. GitHub signs in as them with OIDC,
+// so there's no stored secret. Staging and production are revisions of one app, so they share
+// the release identity, and the approval step is what separates them.
+
+var deployIdentities = !empty(githubRepo)
+var githubIssuer = 'https://token.actions.githubusercontent.com'
+var githubAudience = 'api://AzureADTokenExchange'
+
+resource buildIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (deployIdentities) {
+  name: 'id-${name}-build'
+  location: location
+  tags: tags
+}
+
+resource buildFromBranch 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2023-01-31' = if (deployIdentities) {
+  parent: buildIdentity
+  name: 'github-branch'
+  properties: {
+    issuer: githubIssuer
+    subject: 'repo:${githubRepo}:ref:refs/heads/${deployBranch}'
+    audiences: [
+      githubAudience
+    ]
+  }
+}
+
+module buildPush 'modules/acr-push.bicep' = if (deployIdentities && !empty(registryName)) {
+  name: '${name}-acr-push'
+  scope: resourceGroup(registryResourceGroup)
+  params: {
+    registryName: registryName
+    principalId: buildIdentity!.properties.principalId
+    repository: name
+  }
+}
+
+resource releaseIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (deployIdentities) {
+  name: 'id-${name}-release'
+  location: location
+  tags: tags
+}
+
+resource releaseFromStaging 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2023-01-31' = if (deployIdentities) {
+  parent: releaseIdentity
+  name: 'github-staging'
+  properties: {
+    issuer: githubIssuer
+    subject: 'repo:${githubRepo}:environment:staging'
+    audiences: [
+      githubAudience
+    ]
+  }
+}
+
+// Azure can't write two credentials on one identity at once.
+resource releaseFromProduction 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2023-01-31' = if (deployIdentities) {
+  parent: releaseIdentity
+  name: 'github-production'
+  properties: {
+    issuer: githubIssuer
+    subject: 'repo:${githubRepo}:environment:production'
+    audiences: [
+      githubAudience
+    ]
+  }
+  dependsOn: [
+    releaseFromStaging
+  ]
+}
+
+resource releaseCanUpdateApp 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployIdentities) {
+  name: guid(app.id, 'id-${name}-release', roles.containerAppsContributor)
+  scope: app
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.containerAppsContributor)
+    principalId: releaseIdentity!.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource releaseCanRunMigration 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployIdentities && !empty(migrateCommand)) {
+  name: guid(resourceGroup().id, 'id-${name}-release', roles.containerAppsJobsContributor)
+  scope: migrationJob
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.containerAppsJobsContributor)
+    principalId: releaseIdentity!.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 @description('The tool\'s web address.')
 output url string = 'https://${app.properties.configuration.ingress.fqdn}'
 
@@ -427,3 +527,9 @@ output keyVaultName string = vault.name
 
 @description('The tool\'s identity, for granting it access to anything else it needs.')
 output identityPrincipalId string = identity.properties.principalId
+
+@description('Set as the repository variable AZURE_CLIENT_ID.')
+output buildClientId string = deployIdentities ? buildIdentity!.properties.clientId : ''
+
+@description('Set as AZURE_CLIENT_ID in the staging and production environments.')
+output releaseClientId string = deployIdentities ? releaseIdentity!.properties.clientId : ''

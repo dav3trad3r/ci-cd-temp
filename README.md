@@ -91,8 +91,10 @@ If a release changes the tool's own workflow file, run `npm run tool -- update -
 2. **This repository → Settings → Actions → General → Access:** choose "Accessible from repositories in the organization", so private tools can call the central actions.
 3. Create the `pipeline-approvers` team with at least two people, and give it the **Maintain** role on each tool. Everyone else gets **Write** at most, because Maintain is what lets someone release to production.
 4. Apply the review rules to every repository: `npm run rulesets:apply -- --org your-org`.
-5. **Organisation variables:** `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` and `AZURE_REGISTRY`.
-6. **On each tool:** create `staging` and `production` environments, each limited to the `main` branch, and a federated credential for each.
+5. **Organisation variables:** `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` and `AZURE_REGISTRY`. Don't set `AZURE_CLIENT_ID` here: one shared identity would let a mistake in one pipeline reach every tool.
+6. **On each tool:** create `staging` and `production` environments, each limited to the `main` branch. Deploying its Azure parameters creates two identities with no stored secrets. Set the repository variable `AZURE_CLIENT_ID` to the `buildClientId` output, and `AZURE_CLIENT_ID` in both environments to the `releaseClientId` output.
+
+The build identity can only push that tool's image. The release identity can only change that tool's app and database job. Staging and production are revisions of one app, so they share the release identity, and the promote step is what separates them.
 
 **GitHub plan:** rulesets on private repositories need GitHub Team or Enterprise. CodeQL and dependency review need Advanced Security: set `ADVANCED_SECURITY` to `true` once you have it. Until then, every tool still gets the Gitleaks scan and a dependency audit.
 
