@@ -105,7 +105,7 @@ az group create --name rg-<tool> --location australiaeast
 az deployment group create --resource-group rg-<tool> --parameters infra/tools/<tool>.bicepparam --parameters image=<registry>.azurecr.io/<tool>:<commit>
 ```
 
-From then on, merging to `main` builds the image once and starts it as a **staging revision** with no live traffic. If it's unhealthy, it's switched off and live traffic never moves to it. A Pipeline approver then releases it from **Actions → Platform → Run workflow → promote**, and the step confirms they hold the Maintain role. The previous revision keeps running, so **rollback** in the same menu moves traffic back in seconds.
+From then on, merging to `main` builds the image once and starts it as a **staging revision** with no live traffic. If it's unhealthy, it's switched off and live traffic never moves to it. A Pipeline approver then releases it from **Actions → Platform → Run workflow → promote**, and the step confirms they hold the Maintain role. The previous revision keeps running, so **rollback** in the same menu moves traffic back in seconds. It has its own queue, so a running deploy can't hold it up and a newer merge can't cancel it. If a rollback happens during a release, that release stops and leaves traffic where the rollback put it.
 
 **Database changes wait for approval.** A tool's `migrate` command in `.platform/tool.json` runs once per release, as a one-off Azure job from the image being released, after approval and before traffic moves. If it fails, traffic stays where it is. The starter app no longer migrates when it boots in production, so its first promote creates its tables. On another host, run `npm run db:migrate` as the release step.
 

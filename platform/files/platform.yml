@@ -26,8 +26,10 @@ on:
 permissions:
   contents: read
 
+# A rollback has its own queue, so a running deploy can't hold it up and a newer merge can't
+# cancel it while it waits.
 concurrency:
-  group: platform-${{ github.ref }}
+  group: platform-${{ github.ref }}${{ inputs.action == 'rollback' && '-rollback' || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
