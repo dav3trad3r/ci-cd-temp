@@ -1,6 +1,6 @@
 {
   "name": "ci-cd-temp",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "A starter repo for internal tools built with AI coding assistants, with CI, security scanning and regression checks switched on from the first commit.",
   "license": "MIT",
