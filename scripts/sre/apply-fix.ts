@@ -1,32 +1,34 @@
 // Applies a validated fix proposal and opens a draft pull request. Nothing here trusts the
-// agent: the change is made in a throwaway git worktree, checked with the repository's own
-// Guardrails rules, then the tool's own lint, types and tests run on it, against its baseline and
-// without the pipeline's credentials. Only a change that passes everything is pushed, on an
-// sre-agent/ branch, as a draft for a person to review.
-import { execFile } from "node:child_process";
+// agent: the change is made in a throwaway git worktree and checked with the repository's own
+// Guardrails rules. The tool's lint, types and tests then run on a plain copy of that commit in a
+// locked-down container, which has no credentials, no git and no network. Only the exact commit
+// that passed is pushed, on an sre-agent/ branch, as a draft for a person to review.
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
-  rmdirSync,
+  readFileSync,
+  renameSync,
   rmSync,
-  symlinkSync,
-  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { promisify } from "node:util";
+import { dirname, join } from "node:path";
 import { findWeakenedChecks, parseAddedLines, parseNameStatus } from "../guardrails.js";
 import { CHECK_LABELS, evaluate } from "../platform/baseline.js";
-import { safeEnv } from "../platform/env.js";
 import { hasManifest, loadManifest, type Manifest } from "../platform/model.js";
 import { collectResults, loadBaseline } from "../platform/run-checks.js";
+import {
+  createSandbox,
+  dockerAvailable,
+  exportCommit,
+  installCommand,
+  runInSandbox,
+} from "../platform/sandbox.js";
 import { errorLine, git, tryGit } from "./config.js";
 import { branchName, guardrailProblems, prBody, type FixProposal } from "./fix.js";
 import { gitAuthEnv, githubToken } from "./target.js";
-
-const run = promisify(execFile);
 
 export interface FixContext {
   repo: string;
@@ -109,20 +111,69 @@ async function openPullRequest(
   return pr.html_url;
 }
 
+/** The same comparison CI's Guardrails makes, on the fix as committed. */
+function guardrailFindings(work: string, base: string) {
+  const range = `${base}..HEAD`;
+  return findWeakenedChecks({
+    files: parseNameStatus(git(["diff", "--name-status", "-z", "-M", range], work)),
+    addedLines: parseAddedLines(
+      git(
+        [
+          "-c",
+          "core.quotePath=false",
+          "diff",
+          "--unified=0",
+          "--no-color",
+          "--no-ext-diff",
+          "--no-textconv",
+          "--text",
+          range,
+        ],
+        work,
+      ),
+    ),
+    readBase: (path) => tryGit(["show", `${base}:${path}`], work),
+    readHead: (path) => tryGit(["show", `HEAD:${path}`], work),
+  });
+}
+
+/** Brings Prettier's output back from the sandbox: only the fix's own files, and only if plain. */
+function copyFormatted(paths: string[], from: string, to: string) {
+  for (const path of paths) {
+    const source = join(from, path);
+    const info = lstatSync(source, { throwIfNoEntry: false });
+    if (!info?.isFile() || info.size > 1_000_000) continue;
+    writeFileSync(join(to, path), readFileSync(source));
+  }
+}
+
 export async function applyFix(proposal: FixProposal, ctx: FixContext): Promise<FixResult> {
   const checks: string[] = [];
+  // The agent's code never runs on this machine, which holds the pipeline's credentials.
+  if (!dockerAvailable()) {
+    return {
+      ok: false,
+      checks,
+      problems: [
+        "Docker isn't available, so this fix can't be tested safely. Nothing was changed.",
+      ],
+    };
+  }
   const base = `origin/${ctx.baseBranch}`;
   git(["fetch", "--quiet", "origin", ctx.baseBranch], ctx.repoDir, gitAuthEnv());
   const work = mkdtempSync(join(tmpdir(), "sre-fix-"));
-  const identity = ["-c", `user.name=${ctx.author.name}`, "-c", `user.email=${ctx.author.email}`];
+  const sandboxRoot = mkdtempSync(join(tmpdir(), "sre-sandbox-"));
+  const identity = [
+    "-c",
+    `user.name=${ctx.author.name}`,
+    "-c",
+    `user.email=${ctx.author.email}`,
+    "-c",
+    "core.hooksPath=/dev/null",
+  ];
 
   try {
     git(["worktree", "add", "--detach", "--quiet", work, base], ctx.repoDir);
-    // Proposals can't change dependencies, so an installed checkout's node_modules fits the
-    // worktree. A freshly cloned tool installs its own below.
-    const installed = resolve(ctx.repoDir, "node_modules");
-    const hasModules = existsSync(installed);
-    if (hasModules) symlinkSync(installed, join(work, "node_modules"), "junction");
 
     if (proposal.kind === "revert") {
       try {
@@ -142,13 +193,6 @@ export async function applyFix(proposal: FixProposal, ctx: FixContext): Promise<
         mkdirSync(dirname(target), { recursive: true });
         writeFileSync(target, file.content);
       }
-      // House style, so the format check passes: the agent's files go through Prettier.
-      const paths = (proposal.files ?? []).map((f) => f.path);
-      await run("npx", ["--no-install", "prettier", "--write", "--log-level", "warn", ...paths], {
-        cwd: work,
-        env: safeEnv(),
-        shell: process.platform === "win32",
-      }).catch(() => undefined);
       git(["add", "-A"], work);
       if (!tryGit(["diff", "--cached", "--name-only"], work)?.trim()) {
         return {
@@ -174,27 +218,60 @@ export async function applyFix(proposal: FixProposal, ctx: FixContext): Promise<
       `Applied as one commit on ${ctx.baseBranch} (${proposal.kind === "revert" ? `revert of ${proposal.commit}` : `${proposal.files?.length ?? 0} files`})`,
     );
 
+    // Guardrails first, so a fix that changes the checks never gets to run.
+    const early = guardrailFindings(work, base);
+    if (early.length) return { ok: false, checks, problems: guardrailProblems(early) };
+
+    const manifest = hasManifest(work) ? loadManifest(work) : OWN_CHECKS;
+    const baseline = loadBaseline(work);
+    const box = createSandbox(sandboxRoot, manifest);
+    exportCommit(work, "HEAD", box.dir);
+
+    // Install is the only step with network access, and it has no credentials to send anywhere.
+    if (manifest.commands.install) {
+      const installed = await runInSandbox(
+        box,
+        installCommand(manifest, manifest.commands.install),
+        { network: true },
+      );
+      if (!installed.ok) {
+        const tail = installed.output.trim().split("\n").slice(-25).join("\n");
+        return { ok: false, checks, problems: [`Install failed in the sandbox:\n${tail}`] };
+      }
+    }
+
+    // House style, so the format check passes: the agent's files go through Prettier.
+    const paths = (proposal.files ?? []).map((f) => f.path);
+    if (paths.length) {
+      const quoted = paths.map((p) => `'${p}'`).join(" ");
+      await runInSandbox(box, `npx --no-install prettier --write --log-level warn ${quoted}`);
+      copyFormatted(paths, box.dir, work);
+      git(["add", "-A"], work);
+      if (tryGit(["diff", "--cached", "--name-only"], work)?.trim()) {
+        git([...identity, "commit", "--quiet", "--amend", "--no-edit"], work);
+      }
+    }
+
     // The repository's own Guardrails rules, exactly as CI runs them.
-    const range = `${base}..HEAD`;
-    const findings = findWeakenedChecks({
-      files: parseNameStatus(git(["diff", "--name-status", "-M", range], work)),
-      addedLines: parseAddedLines(
-        git(["diff", "--unified=0", "--no-color", "--no-ext-diff", range], work),
-      ),
-      readBase: (path) => tryGit(["show", `${base}:${path}`], work),
-      readHead: (path) => tryGit(["show", `HEAD:${path}`], work),
-    });
+    const findings = guardrailFindings(work, base);
     if (findings.length) return { ok: false, checks, problems: guardrailProblems(findings) };
     checks.push("Guardrails rules: no check weakened");
 
+    // This exact commit is what gets pushed, whatever the checks do to their copy of the files.
+    const candidate = git(["rev-parse", "HEAD"], work).trim();
+    const clean = createSandbox(sandboxRoot, manifest, "checked");
+    exportCommit(work, candidate, clean.dir);
+    if (existsSync(join(box.dir, "node_modules"))) {
+      renameSync(join(box.dir, "node_modules"), join(clean.dir, "node_modules"));
+    }
+
     // The tool's own commands, compared with its baseline: a fix can't add a new problem.
-    const manifest = hasManifest(work) ? loadManifest(work) : OWN_CHECKS;
-    const baseline = loadBaseline(work);
     const raw = await collectResults({
-      dir: work,
+      dir: clean.dir,
       manifest,
       only: ["lint", "typecheck", "test"],
-      installed: hasModules,
+      installed: true,
+      runner: (command) => runInSandbox(clean, command),
     });
     for (const result of raw) {
       const verdict = evaluate(result, baseline);
@@ -226,10 +303,11 @@ export async function applyFix(proposal: FixProposal, ctx: FixContext): Promise<
           [
             "push",
             "--quiet",
-            `https://x-access-token:${key}@github.com/${ctx.repo}.git`,
-            `HEAD:refs/heads/${branch}`,
+            `https://github.com/${ctx.repo}.git`,
+            `${candidate}:refs/heads/${branch}`,
           ],
           work,
+          gitAuthEnv(key),
         );
       } catch (error) {
         return {
@@ -245,7 +323,7 @@ export async function applyFix(proposal: FixProposal, ctx: FixContext): Promise<
     // No token on this machine: push with the developer's own git credentials and leave the
     // pull request for a person to open from the saved draft.
     try {
-      git(["push", "--quiet", "origin", `HEAD:refs/heads/${branch}`], work);
+      git(["push", "--quiet", "origin", `${candidate}:refs/heads/${branch}`], work);
     } catch (error) {
       return {
         ok: false,
@@ -261,18 +339,8 @@ export async function applyFix(proposal: FixProposal, ctx: FixContext): Promise<
     );
     return { ok: true, checks, problems: [], branch, prDraftFile };
   } finally {
-    // Remove the node_modules link first, so no clean-up step can follow it into the real one.
-    const link = join(work, "node_modules");
-    try {
-      unlinkSync(link); // a symlink (Linux, macOS)
-    } catch {
-      try {
-        rmdirSync(link); // a junction (Windows): removes the link, not its target
-      } catch {
-        // no link was made
-      }
-    }
     tryGit(["worktree", "remove", "--force", work], ctx.repoDir);
     rmSync(work, { recursive: true, force: true });
+    rmSync(sandboxRoot, { recursive: true, force: true });
   }
 }

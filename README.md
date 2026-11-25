@@ -243,7 +243,7 @@ Local runs need no set-up: without `DATABASE_URL` the server uses an in-process 
 
 ## SRE agent: incident response
 
-Once connected, when an alert fires on a tool, `.github/workflows/incident.yml` starts the SRE agent on [Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview). It investigates, keeps people updated, and proposes a fix as a draft pull request. **A person reviews and merges; the agent never changes production.**
+Once connected, when an alert fires on a tool, `.github/workflows/incident.yml` starts the SRE agent on [Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview). It investigates, keeps people updated, and proposes a fix as a draft pull request. **A person reviews and merges; the agent never changes production.** A proposed fix is tested in a locked-down Docker container with a plain copy of the commit: no credentials, no git, and no network for its tests. Only the exact commit that passed is pushed. Without Docker, the agent refuses to test a fix.
 
 1. **The alert starts it.** An Azure Monitor action group calls a Logic App, which calls GitHub's `repository_dispatch` with the tool and the alert.
 2. **It investigates with read-only tools** that this workflow runs for it: `get_alert`, `get_metrics` (Azure Monitor), `get_logs` (Log Analytics), `get_recent_deploys` (container app revisions) and `get_diff` (GitHub). It follows a runbook skill (`sre/agent/runbook/`), reads team memory (the service map, known noise, past incidents) and keeps its own notebook between incidents.

@@ -21,7 +21,7 @@ import { gitleaksBin, leakLine, scanHistory } from "./secrets.js";
 const COMMAND_TIMEOUT = 10 * 60_000;
 const OUTPUT_LIMIT = 512 * 1024;
 
-interface Ran {
+export interface Ran {
   ok: boolean;
   output: string;
   crashed: boolean;
@@ -134,11 +134,13 @@ export interface CheckOptions {
   only?: CheckName[];
   /** Skip the install step, for a folder that already has its dependencies. */
   installed?: boolean;
+  /** Runs the tool's own commands somewhere else, such as a sandbox for unreviewed code. */
+  runner?: (command: string) => Promise<Ran>;
   onResult?: (result: RawResult) => void;
 }
 
 export async function collectResults(options: CheckOptions): Promise<RawResult[]> {
-  const { dir, manifest, only, installed, onResult } = options;
+  const { dir, manifest, only, installed, onResult, runner } = options;
   const env = safeEnv();
   const results: RawResult[] = [];
   const wanted = (name: CheckName) => !only || only.includes(name);
@@ -155,7 +157,7 @@ export async function collectResults(options: CheckOptions): Promise<RawResult[]
       add({ name, configured: false, ok: false, output: "" });
       return false;
     }
-    const result = await run(text, [], dir, env, true);
+    const result = runner ? await runner(text) : await run(text, [], dir, env, true);
     add({
       name,
       configured: true,
