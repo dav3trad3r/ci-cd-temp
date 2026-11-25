@@ -19,7 +19,6 @@ Each release is a version tools can adopt. Merging a version change to `main` pu
 - Database changes now wait for approval. A tool's `migrate` command runs once per release as a one-off Azure job, from the image being released, before traffic moves. If it fails, traffic stays where it is.
 - The starter app no longer migrates when it boots in production. Each migration runs in its own transaction, behind a lock.
 - Onboarding and every staging deploy flag a tool that appears to change its database at startup.
-
 - The baseline no longer lets a broken tool deploy: a crash or a result it can't count fails, a skip can't clear a serious problem, and a known install or build failure blocks deployment.
 - Guardrails works on any tool's layout: check scripts by name and manifest, check settings in any folder, more ways to skip or silence a test, and Dependabot may only move an action's version.
 - The starter API refuses due dates the database can't store, instead of returning a 500.
