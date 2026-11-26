@@ -139,6 +139,18 @@ describe("skill linter", () => {
     }
   });
 
+  test("the failures and fixes can be a table", () => {
+    const table = (rows: string) =>
+      passing.replace(RECOVERY, `## Error recovery\n\n| Failure | Fix |\n| --- | --- |\n${rows}`);
+    expect(rules(table("| `npm test` can't find a module | Run `npm ci` first. |"))).toEqual([]);
+    expect(
+      rules(table("| **The build fails** | Read the first error and fix that file. |")),
+    ).toEqual([]);
+    expect(rules(table("| The build fails | Try again. |"))).toEqual(["recovery"]);
+    expect(rules(table("| The build fails | |"))).toEqual(["recovery"]);
+    expect(rules(table(""))).toEqual(["recovery"]);
+  });
+
   test("a fix may retry once it says what to change", () => {
     expect(onlyRetries("Retry with `--since 120` to widen the window.")).toBe(false);
     expect(onlyRetries("Correct what each reason names and call it once more.")).toBe(false);

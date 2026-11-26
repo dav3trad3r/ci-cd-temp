@@ -22,7 +22,7 @@ The commands are for a POSIX shell (bash, zsh, or Git Bash on Windows), run from
 
 ## Steps
 
-1. **Check it isn't already filed.** Search for the command or the error text:
+1. **Check it isn't already filed.** Search for the command or the error text, which also finds reports filed under the same skill:
 
    ```bash
    grep -n -i "<command or error text>" papercuts.md
@@ -36,6 +36,7 @@ The commands are for a POSIX shell (bash, zsh, or Git Bash on Windows), run from
    ```markdown
    ## <YYYY-MM-DD>: <what went wrong, in one line>
 
+   - **Skill:** the skill you were following when it happened, or `none`.
    - **Tried:** the exact command or call, with its flags and the tool's version.
    - **Expected:** what should have happened, and why you expected it (help text, docs, an earlier run).
    - **Happened:** what did happen: the exit code and the first lines of output.
@@ -46,11 +47,11 @@ The commands are for a POSIX shell (bash, zsh, or Git Bash on Windows), run from
    Then check the draft:
 
    ```bash
-   grep -c -E '^- \*\*(Tried|Expected|Happened|Fix|Seen by):\*\* \S' /tmp/papercut.md
+   grep -c -E '^- \*\*(Skill|Tried|Expected|Happened|Fix|Seen by):\*\* \S' /tmp/papercut.md
    grep -n -i -E 'api[_-]?key|secret|token|password|bearer' /tmp/papercut.md
    ```
 
-   Check: the first command prints `5`, and the second prints nothing, or only words used in plain prose with no value next to them.
+   Check: the first command prints `6`, and the second prints nothing, or only words used in plain prose with no value next to them.
 
 3. **Choose where it goes.** Look for a `papercut` issue label: `gh label list --search papercut --json name --jq '.[].name'`
 

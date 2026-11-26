@@ -276,27 +276,58 @@ function stepList(steps: number[]): string {
   return `steps ${steps.slice(0, -1).join(", ")} and ${steps.at(-1)}`;
 }
 
-function lintRecovery(path: string, doc: Document): Finding[] {
-  const found = (detail: string): Finding => ({ path, rule: "recovery", detail });
-  const section = findSection(doc, /recover|if (?:a step|something|it) fails|troubleshoot/i);
-  const shape = "a list of `- **<what failed>** <how to fix it>` entries";
-  if (!section) return [found(`add an \`## Error recovery\` section: ${shape}.`)];
-  const items = listItems(section, BULLET_ITEM);
-  if (items.length === 0) return [found(`the Error recovery section needs ${shape}.`)];
-  const findings: Finding[] = [];
-  items.forEach((item, i) => {
+interface RecoveryEntry {
+  /** What failed. Undefined when the entry doesn't name it. */
+  failure?: string;
+  fix: string;
+}
+
+/** `- **<what failed>** <how to fix it>` list items. */
+function recoveryList(section: Section): RecoveryEntry[] {
+  return listItems(section, BULLET_ITEM).map((item) => {
     const text = item.lines
       .map((line) => line.trim())
       .join(" ")
       .replace(BULLET_ITEM, "$1");
     const entry = /^\*\*(.+?)\*\*[:.]?\s*(.*)$/.exec(text);
-    if (!entry) {
+    return entry
+      ? { failure: entry[1] as string, fix: (entry[2] as string).trim() }
+      : { fix: text };
+  });
+}
+
+/** Rows of a table whose first column is what failed and whose second is the fix. */
+function recoveryTable(section: Section): RecoveryEntry[] {
+  const rows = section.lines
+    .filter((line, i) => !section.fenced[i] && line.trim().startsWith("|"))
+    .map((line) =>
+      line
+        .trim()
+        .replace(/^\||\|$/g, "")
+        .split(/(?<!\\)\|/)
+        .map((cell) => cell.trim()),
+    );
+  const separator = rows.findIndex((cells) => cells.every((cell) => /^:?-{3,}:?$/.test(cell)));
+  if (separator !== 1) return [];
+  return rows.slice(2).map((cells) => {
+    const failure = cells[0]?.replace(/^\*\*(.*)\*\*$/, "$1");
+    return { failure: failure || undefined, fix: cells.slice(1).join(" ").trim() };
+  });
+}
+
+function lintRecovery(path: string, doc: Document): Finding[] {
+  const found = (detail: string): Finding => ({ path, rule: "recovery", detail });
+  const section = findSection(doc, /recover|if (?:a step|something|it) fails|troubleshoot/i);
+  const shape =
+    "a list of `- **<what failed>** <how to fix it>` entries, or a table with a failure and a fix in each row";
+  if (!section) return [found(`add an \`## Error recovery\` section: ${shape}.`)];
+  const entries = [...recoveryList(section), ...recoveryTable(section)];
+  if (entries.length === 0) return [found(`the Error recovery section needs ${shape}.`)];
+  const findings: Finding[] = [];
+  entries.forEach(({ failure, fix }, i) => {
+    if (failure === undefined) {
       findings.push(found(`entry ${i + 1} should name the failure in bold, then give its fix.`));
-      return;
-    }
-    const failure = entry[1] as string;
-    const fix = (entry[2] as string).trim();
-    if (!fix) {
+    } else if (!fix) {
       findings.push(found(`"${failure}" has no fix.`));
     } else if (onlyRetries(fix)) {
       findings.push(
