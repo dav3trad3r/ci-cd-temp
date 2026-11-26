@@ -38,6 +38,8 @@ jobs:
         run: npm run format:check
       - name: Lint
         run: npm run lint
+      - name: Agent skills (name, description, length, steps with commands and checks, error recovery)
+        run: npm run check:skills
       - name: Typecheck
         run: npm run typecheck
       - name: Tests (unit, access control, row-level security, regressions, API contracts)

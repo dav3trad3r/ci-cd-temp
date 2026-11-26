@@ -1,0 +1,25 @@
+{
+  "about": "Skills that may fail the skill linter (npm run check:skills) for now, with the rules each one fails and why. The list can only shrink: the linter fails when a waived rule starts passing, and the Guardrails check flags any new waiver for a person to approve.",
+  "skills": {
+    ".claude/skills/blast-radius/SKILL.md": {
+      "reason": "Third-party skill from pstack, kept close to the original so it is easy to update. Its steps guide a review rather than run commands, and it has no error-recovery section.",
+      "rules": ["step-objective", "step-command", "step-check", "recovery"]
+    },
+    ".claude/skills/how/SKILL.md": {
+      "reason": "Third-party skill from pstack, kept close to the original so it is easy to update. It explains code rather than following steps, and it has no error-recovery section.",
+      "rules": ["steps", "recovery"]
+    },
+    ".claude/skills/tdd/SKILL.md": {
+      "reason": "Third-party skill from pstack, kept close to the original so it is easy to update. Its workflow has no command or check per step, and it has no error-recovery section.",
+      "rules": ["steps", "recovery"]
+    },
+    ".claude/skills/teach/SKILL.md": {
+      "reason": "Third-party skill from pstack, kept close to the original so it is easy to update. It explains code rather than following steps, and it has no error-recovery section.",
+      "rules": ["steps", "recovery"]
+    },
+    ".claude/skills/why/SKILL.md": {
+      "reason": "Third-party skill from pstack, kept close to the original so it is easy to update. It explains code rather than following steps, and it has no error-recovery section.",
+      "rules": ["steps", "recovery"]
+    }
+  }
+}
