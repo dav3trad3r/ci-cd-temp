@@ -16,7 +16,7 @@ CI exists to catch mistakes, including yours. When a check fails, fix the code. 
 
 - skip, focus or delete tests (`.skip`, `.only`, `.todo`), or delete anything in `tests/security/` or `tests/regressions/`
 - silence the linter or type checker (`eslint-disable`, `@ts-ignore`, `@ts-nocheck`)
-- raise `budgets.json`, lower `evals/baseline.json`, or change the check scripts in `package.json`
+- raise `budgets.json`, lower `evals/baseline.json`, add a waiver to `skills-waivers.json`, or change the check scripts in `package.json`
 - edit the workflows, `.claude/`, this file, the scripts that run the checks, or the test, lint and format configuration, unless that is the task
 
 The **Guardrails** check fails a pull request that does any of these. If such a change is truly intended, explain why in the pull request description. A person approves it by adding the `guardrail-change` label; never add that label yourself.
@@ -27,6 +27,11 @@ The **Guardrails** check fails a pull request that does any of these. If such a 
 - **New table:** switch on row-level security in its migration. `tests/security/rls.test.ts` checks every table.
 - **Bug fix:** add a dated test in `tests/regressions/` that fails before the fix. See the folder's README.
 - **Changed response shape:** update the snapshot with `npx vitest run -u` and say why in the pull request.
+- **New or changed skill (`SKILL.md`):** `npm run check:skills` must pass. Fix the skill rather than waive it.
+
+## Report friction
+
+When a tool, command or check gets in your way, such as a flag that's rejected, a command that exits 0 on an error, or a search that comes back empty when it should match, file a papercut by following `.claude/skills/log-papercut/SKILL.md`, then carry on with your task.
 
 ## Secrets
 
