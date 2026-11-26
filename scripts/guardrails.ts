@@ -51,6 +51,9 @@ export const GUARDED_FILES = [
   "scripts/check-frontend.mjs",
   "scripts/check-infra.mjs",
   "scripts/smoke.mjs",
+  "scripts/skills-lint.ts",
+  "scripts/check-skills.ts",
+  "tests/unit/skills-lint.test.ts",
   "evals/run.ts",
   "scripts/guardrails.ts",
   "scripts/check-guardrails.ts",
@@ -79,6 +82,9 @@ const GUARDED_PATTERNS = [
 /** A tool's allowance for old problems. Lowering it is always fine; raising it needs a person. */
 const BASELINE_FILE = ".platform/baseline.json";
 
+/** Skills allowed to fail the skill linter for now. Removing a waiver is fine; adding one needs a person. */
+const SKILL_WAIVERS = "skills-waivers.json";
+
 /** Folders whose tests must never be moved out to make CI pass. */
 const PROTECTED_TESTS = /(?:^|\/)tests?\/(?:security|regressions)\//;
 
@@ -91,6 +97,7 @@ export const CHECK_SCRIPTS = [
   "test",
   "check:frontend",
   "check:infra",
+  "check:skills",
   "check:guardrails",
   "smoke",
   "eval",
@@ -175,6 +182,30 @@ function compareNumbers(
       findings.push({ rule, detail: `${file}: "${key}" was removed (it was ${old}).` });
     } else if (worse === "higher" ? now > old : now < old) {
       findings.push({ rule, detail: `${file}: "${key}" went from ${old} to ${now}.` });
+    }
+  }
+  return findings;
+}
+
+/** Waivers in skills-waivers.json that weren't there before: each lets a skill fail a linter rule. */
+function waiversAdded(change: ChangeSet): Finding[] {
+  if (!change.files.some((f) => f.path === SKILL_WAIVERS && f.status !== "D")) return [];
+  type Waivers = Record<string, { rules?: unknown } | undefined>;
+  const read = (text: string | undefined) => parseJson(text)?.skills as Waivers | undefined;
+  const rule = "skill waiver added";
+  const after = read(change.readHead(SKILL_WAIVERS));
+  if (!after || typeof after !== "object") {
+    return [{ rule, detail: `${SKILL_WAIVERS} can't be read.` }];
+  }
+  const before = read(change.readBase(SKILL_WAIVERS)) ?? {};
+  const list = (value: unknown) => (Array.isArray(value) ? value.map(String) : []);
+  const findings: Finding[] = [];
+  for (const [path, waiver] of Object.entries(after)) {
+    const old = new Set(list(before[path]?.rules));
+    for (const waived of list(waiver?.rules)) {
+      if (!old.has(waived)) {
+        findings.push({ rule, detail: `${SKILL_WAIVERS}: ${path} may now fail "${waived}".` });
+      }
     }
   }
   return findings;
@@ -336,6 +367,9 @@ export function findWeakenedChecks(change: ChangeSet): Finding[] {
   } else if (change.files.some((f) => f.path === BASELINE_FILE && f.status === "D")) {
     findings.push({ rule: "baseline raised", detail: `${BASELINE_FILE} was deleted.` });
   }
+
+  // 5c. Skill-linter waivers may only shrink
+  findings.push(...waiversAdded(change));
 
   // 6. The scripts CI runs and any check settings in package.json, in every package
   const packages = new Set(["package.json"]);

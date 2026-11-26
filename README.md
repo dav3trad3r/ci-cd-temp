@@ -22,6 +22,7 @@ A working prototype and a foundation to adapt, not a finished platform. This is 
 | SRE agent                                  | **Not connected**  | Covers every registered tool. Ran end to end on a scripted incident with a planted bug ([draft PR #12](https://github.com/dav3trad3r/ci-cd-temp/pull/12)), and its fix path is tested on a migrated tool. Its Azure tools and the alert trigger haven't run |
 | Review and merge rules                     | **Not applied**    | Dry-run tested. They need a GitHub organisation with a Pipeline approvers team                                                                                                                                                                              |
 | Deploy pipeline                            | **Partly proved**  | Staging, promote, rollback and a blocked bad release ran on a real Azure sandbox. The whole pipeline hasn't yet run from a tool's own repository. Migrations run after approval. Staging still uses live data                                               |
+| Skill linter and papercuts                 | **Working**        | The linter runs on every pull request. Five third-party skills are waived until they're rewritten. Agents file papercuts to `papercuts.md` or an issue                                                                                                      |
 | Feature map and live verification          | **Next**           | Not built: a map of each tool's features, checked against the deployed tool                                                                                                                                                                                 |
 
 ## Two ways onto the platform
@@ -135,6 +136,7 @@ With GitHub Enterprise you can approve inside the run instead: add required revi
 |                | Bundle-size budget for browser JavaScript (`budgets.json`)                        | Every pull request               |
 |                | AI evaluation: known-answer cases must meet the baseline (`evals/`)               | Nightly                          |
 | AI agents      | Guardrails: no check weakened (skipped tests, raised budgets, edited CI)          | Every pull request               |
+|                | Skill linter: every `SKILL.md` has numbered, checkable steps and error recovery   | Every pull request               |
 |                | SRE agent: investigates an alert, proposes a fix as a draft pull request          | On an alert, once connected      |
 | Review         | A Pipeline approver approves; only Pipeline approvers merge (`.github/rulesets/`) | Every pull request, once applied |
 | Infrastructure | Azure templates in `infra/` pass the Bicep linter and compile                     | Every pull request               |
@@ -173,7 +175,7 @@ The Guardrails check fails a pull request that:
 
 - adds `.skip`, `.only` or `.todo` to a test, or deletes a test in `tests/security/` or `tests/regressions/`
 - adds `eslint-disable`, `@ts-ignore` or `@ts-nocheck`
-- raises a number in `budgets.json` or lowers `evals/baseline.json`
+- raises a number in `budgets.json`, lowers `evals/baseline.json` or adds a waiver to `skills-waivers.json`
 - changes a check script in `package.json` (such as `test` or `lint`)
 - edits the workflows, `CODEOWNERS`, agent settings, `AGENTS.md`, the scripts that run the checks, or the test, lint, format and type-check configuration (Dependabot's action bumps are let through)
 
@@ -187,7 +189,7 @@ The Guardrails check fails a pull request that:
 
 ### Skills
 
-`.claude/skills/` gives Claude Code five skills, which run only when someone types them.
+`.claude/skills/` gives Claude Code six skills. Five run only when someone types them; `log-papercut` runs on its own when an agent hits friction.
 
 | Type            | What it does                                                                         |
 | --------------- | ------------------------------------------------------------------------------------ |
@@ -196,8 +198,13 @@ The Guardrails check fails a pull request that:
 | `/teach`        | Combines `how` and `why` into one plain explanation for someone new to the code      |
 | `/tdd`          | Fixes a bug by writing the failing test first, in `tests/regressions/`               |
 | `/blast-radius` | Finds what a change could break elsewhere, and runs code to prove the change is safe |
+| `log-papercut`  | Files a short report when a tool or command gets in the agent's way                  |
 
 `how`, `why`, `teach`, `tdd` and `blast-radius` come from [pstack](https://github.com/backnotprop/pstack) (MIT licence), with notes for this repo added. Each folder keeps its licence. The lint and format checks skip `.claude/skills/` so the files stay close to the originals and easy to update; changes to them still need the `guardrail-change` label, like everything under `.claude/`.
+
+**Skill linter.** `npm run check:skills` checks every `SKILL.md` in the repository, in CI and in `npm run verify`. A skill needs a name, a description of about 100 tokens or less and a body under 500 lines. Its steps are numbered, and each one opens with one objective, gives a concrete command and says how to check the result. An error-recovery section, as a list or a table, gives known failures and their fixes, and "try again" doesn't count as a fix. A skill can't ship its own `.mcp.json`. The SRE runbook and `log-papercut` pass. The five pstack skills don't, so `skills-waivers.json` lists the rules each one fails, with a reason. That list can only shrink: the linter fails when a waived rule starts passing, and Guardrails flags any new waiver.
+
+**Papercuts.** `AGENTS.md` asks every agent to file a papercut when something gets in its way: a flag that's rejected, a command that exits 0 on an error, or a search that comes back empty when it should match. The `log-papercut` skill records which skill the agent was following, what was tried, what was expected, what happened and what would fix it, in `papercuts.md`, or as a GitHub issue when the repository has a `papercut` label. Its steps are plain shell commands, so any agent can follow them. The platform team fixes the ones that repeat.
 
 **Outside the repo**, give each agent its own identity with the least access it needs: read-only by default, never a person's login, and short-lived credentials (such as GitHub's OIDC sign-in to the cloud) instead of stored keys. Your cloud's activity log then shows which agent changed what.
 

@@ -136,10 +136,31 @@ describe("guardrails", () => {
       ".prettierrc.json",
       "bicepconfig.json",
       "scripts/check-infra.mjs",
+      "scripts/skills-lint.ts",
       "evals/run.ts",
     ]) {
       expect(rules(change({ files: [{ status: "M", path }] }))).toEqual(["guarded file changed"]);
     }
+  });
+
+  test("flags a new skill-linter waiver, but not a removed one", () => {
+    const file = "skills-waivers.json";
+    const waivers = (rules: string[]) =>
+      JSON.stringify({ skills: { "a/SKILL.md": { reason: "Third-party copy.", rules } } });
+    const files = [{ status: "M", path: file }];
+    const before = { [file]: waivers(["steps"]) };
+    expect(
+      rules(change({ files, before, after: { [file]: waivers(["steps", "recovery"]) } })),
+    ).toEqual(["skill waiver added"]);
+    expect(rules(change({ files, before, after: { [file]: waivers([]) } }))).toEqual([]);
+    expect(
+      rules(
+        change({ files: [{ status: "A", path: file }], after: { [file]: waivers(["steps"]) } }),
+      ),
+    ).toEqual(["skill waiver added"]);
+    expect(rules(change({ files, before, after: { [file]: "not json" } }))).toEqual([
+      "skill waiver added",
+    ]);
   });
 
   test("flags edits to the review and merge rules for main", () => {
